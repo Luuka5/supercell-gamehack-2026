@@ -53,7 +53,7 @@ fn main() {
         .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
         .add_plugins(PlayerPlugin)
         .add_plugins(AiPlugin)
-        .add_systems(Startup, (setup, setup_cursor))
+        .add_systems(Startup, setup)
         .add_systems(Update, (grab_cursor, debug_log_positions))
         .run();
 }
@@ -73,32 +73,14 @@ fn debug_log_positions(
 }
 
 fn grab_cursor(
-    mut q_windows: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>,
+    mut q_windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse_btn: Res<ButtonInput<MouseButton>>,
-    key_btn: Res<ButtonInput<KeyCode>>,
 ) {
-    if let Some((mut window, mut cursor_options)) = q_windows.iter_mut().next() {
+    if let Some(mut cursor_options) = q_windows.iter_mut().next() {
         if mouse_btn.just_pressed(MouseButton::Left) {
             cursor_options.visible = false;
             cursor_options.grab_mode = CursorGrabMode::Locked;
-
-            // Center the cursor
-            let width = window.width();
-            let height = window.height();
-            window.set_cursor_position(Some(Vec2::new(width / 2.0, height / 2.0)));
         }
-
-        if key_btn.just_pressed(KeyCode::Escape) {
-            cursor_options.visible = true;
-            cursor_options.grab_mode = CursorGrabMode::None;
-        }
-    }
-}
-
-fn setup_cursor(mut q_windows: Query<&mut CursorOptions, With<PrimaryWindow>>) {
-    if let Some(mut cursor_options) = q_windows.iter_mut().next() {
-        cursor_options.visible = true;
-        cursor_options.grab_mode = CursorGrabMode::None;
     }
 }
 
