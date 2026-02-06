@@ -1,7 +1,6 @@
+use crate::pathfinding::NavGraph;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 
 pub struct ArenaPlugin {
     layout: String,
@@ -20,7 +19,6 @@ struct ArenaMapLayout(String);
 
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
-        // Parse the layout to determine dimensions
         let lines: Vec<&str> = self.layout.trim().lines().collect();
         let height = lines.len() as u32;
         let width = lines.first().map(|l| l.len()).unwrap_or(0) as u32;
@@ -47,15 +45,8 @@ pub struct ArenaConfig {
 
 #[derive(Resource, Default)]
 pub struct ArenaGrid {
-    // Map (x, y) to the Tile entity at that location
     pub tiles: HashMap<(u32, u32), Entity>,
-    // Map (x, y) to the Obstacle/Wall entity at that location (if any)
     pub occupants: HashMap<(u32, u32), Entity>,
-}
-
-#[derive(Resource, Default)]
-pub struct NavGraph {
-    pub nodes: HashMap<(u32, u32), Vec<(u32, u32)>>,
 }
 
 #[derive(Component, Debug, Clone, Copy)]
@@ -93,20 +84,10 @@ fn spawn_arena(
 
     let lines: Vec<&str> = layout.0.trim().lines().collect();
 
-    // Iterate through the layout string
-    // Note: The layout string is top-to-bottom (visual Y down), but our world coordinates usually have +Z as "down" or "south" in 3D.
-    // Let's map layout row -> Z (y in grid coords) and layout col -> X (x in grid coords).
-    // To match the previous loop behavior where (0,0) was bottom-left, we might need to reverse rows or just accept (0,0) is top-left of the string.
-    // Let's treat the first line as Z=0 (or Z=height-1 if we want to flip it).
-    // Standard convention: (0,0) is usually top-left in 2D grids from strings.
-    // Let's map:
-    // col -> x
-    // row -> y (where row 0 is y=0)
-
     for (y, line) in lines.iter().enumerate() {
         for (x, char) in line.chars().enumerate() {
             let x = x as u32;
-            let y = y as u32; // Using y from 0 to height-1
+            let y = y as u32;
 
             let position = Vec3::new(
                 x as f32 * config.tile_size,
@@ -114,7 +95,6 @@ fn spawn_arena(
                 y as f32 * config.tile_size,
             );
 
-            // Always spawn a floor tile
             let tile_entity = commands
                 .spawn((
                     Tile { x, y },
@@ -149,27 +129,20 @@ fn spawn_arena(
                         .id();
                     grid.occupants.insert((x, y), obstacle_entity);
                 }
-                '.' => {
-                    // Empty floor, nothing to do
-                }
-                _ => {
-                    // Unknown character, treat as floor
-                }
+                _ => {}
             }
         }
     }
 }
 
 fn generate_nav_nodes(
-    mut commands: Commands,
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
     mut nav_graph: ResMut<NavGraph>,
 ) {
     let directions = [(0, 1), (0, -1), (1, 0), (-1, 0)];
 
-    for ((x, y), &tile_entity) in &grid.tiles {
-        // If there is an occupant (Wall or Obstacle), this tile is not walkable
+    for ((x, y), _) in &grid.tiles {
         if grid.occupants.contains_key(&(*x, *y)) {
             continue;
         }
@@ -184,7 +157,6 @@ fn generate_nav_nodes(
                 let nx = nx as u32;
                 let ny = ny as u32;
 
-                // Check if neighbor is occupied
                 if !grid.occupants.contains_key(&(nx, ny)) {
                     if let Some(&_neighbor_entity) = grid.tiles.get(&(nx, ny)) {
                         graph_neighbors.push((nx, ny));
@@ -193,109 +165,8 @@ fn generate_nav_nodes(
             }
         }
 
-        // Add NavNode component to the tile entity
         nav_graph.nodes.insert((*x, *y), graph_neighbors);
     }
 
     info!("NavGraph generated with {} nodes.", nav_graph.nodes.len());
-    // Debug specific nodes
-    if let Some(n) = nav_graph.nodes.get(&(4, 2)) {
-        info!("Node (4, 2) has {} neighbors: {:?}", n.len(), n);
-    } else {
-        warn!("Node (4, 2) not found in graph!");
-    }
-    if let Some(n) = nav_graph.nodes.get(&(35, 2)) {
-        info!("Node (35, 2) has {} neighbors: {:?}", n.len(), n);
-    } else {
-        warn!("Node (35, 2) not found in graph!");
-    }
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-struct State {
-    cost: u32,
-    position: (u32, u32),
-}
-
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .cmp(&self.cost)
-            .then_with(|| self.position.0.cmp(&other.position.0))
-            .then_with(|| self.position.1.cmp(&other.position.1))
-    }
-}
-
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Option<Vec<(u32, u32)>> {
-    let mut dist: HashMap<(u32, u32), u32> = HashMap::default();
-    let mut heap = BinaryHeap::new();
-    let mut came_from: HashMap<(u32, u32), (u32, u32)> = HashMap::default();
-
-    dist.insert(start, 0);
-    heap.push(State {
-        cost: 0,
-        position: start,
-    });
-
-    let mut visited_count = 0;
-
-    while let Some(State { cost, position }) = heap.pop() {
-        visited_count += 1;
-
-        if position == goal {
-            info!("Path found! Visited {} nodes.", visited_count);
-            let mut path = Vec::new();
-            let mut current = goal;
-            while current != start {
-                path.push(current);
-                if let Some(&prev) = came_from.get(&current) {
-                    current = prev;
-                } else {
-                    return None;
-                }
-            }
-            path.push(start);
-            path.reverse();
-            return Some(path);
-        }
-
-        // Removed incorrect stale check
-        // if cost > *dist.get(&position).unwrap_or(&u32::MAX) { continue; }
-
-        if let Some(neighbors) = graph.nodes.get(&position) {
-            for &neighbor in neighbors {
-                let current_g = *dist.get(&position).unwrap();
-                let new_cost = current_g + 1;
-
-                let neighbor_dist = *dist.get(&neighbor).unwrap_or(&u32::MAX);
-
-                if new_cost < neighbor_dist {
-                    dist.insert(neighbor, new_cost);
-                    let h = (neighbor.0 as i32 - goal.0 as i32).abs() as u32
-                        + (neighbor.1 as i32 - goal.1 as i32).abs() as u32;
-                    heap.push(State {
-                        cost: new_cost + h,
-                        position: neighbor,
-                    });
-                    came_from.insert(neighbor, position);
-                }
-            }
-        } else {
-            warn!("Node {:?} has no entry in graph!", position);
-        }
-    }
-
-    info!(
-        "Pathfinding failed. Visited {} nodes. Graph size: {}",
-        visited_count,
-        graph.nodes.len()
-    );
-    None
 }
