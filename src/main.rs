@@ -1,5 +1,6 @@
 mod ai;
 mod arena;
+mod building;
 mod pathfinding;
 mod player;
 
@@ -7,6 +8,7 @@ use ai::{AiPlayer, AiPlugin, Enemy, PathFollower, TargetDestination};
 use arena::{ArenaConfig, ArenaPlugin};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
+use building::BuildingPlugin;
 use player::{MainCamera, MovementController, Player, PlayerPlugin, User};
 
 // --- Game Constants ---
@@ -53,6 +55,7 @@ fn main() {
         .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
         .add_plugins(PlayerPlugin)
         .add_plugins(AiPlugin)
+        .add_plugins(BuildingPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, (grab_cursor, debug_log_positions))
         .run();
