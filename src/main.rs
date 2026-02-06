@@ -12,10 +12,43 @@ const MOUSE_SENSITIVITY: f32 = 0.003;
 const PLAYER_SPEED: f32 = 10.0;
 const PLAYER_SIZE: Vec3 = Vec3::new(1.0, 2.0, 1.0);
 
+// . = Floor
+// X = Wall
+// O = Obstacle
+const ARENA_LAYOUT: &str = "
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+X........X.............................X
+X........X.............................X
+X........X.............................X
+X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
+X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
+X......................................X
+X......................................X
+X.......OOOOOOOO..........OOOOOOOO.....X
+X.......OOOOOOOO..........OOOOOOOO.....X
+X......................................X
+X......................................X
+X...XXXXXXXXXXXX...XXXX...XXXXXXXXXXXX.X
+X...XXXXXXXXXXXX...XXXX...XXXXXXXXXXXX.X
+X..................XXXX................X
+X..................XXXX................X
+X.......OOOOOOOO..........OOOOOOOO.....X
+X.......OOOOOOOO..........OOOOOOOO.....X
+X......................................X
+X......................................X
+X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
+X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
+X......................................X
+X.............................X........X
+X.............................X........X
+X.............................X........X
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+";
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(ArenaPlugin)
+        .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
         .add_systems(Startup, (setup, setup_cursor))
         .add_systems(
             Update,
@@ -33,13 +66,14 @@ struct MainCamera {
 }
 
 fn setup_cursor(mut q_windows: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>) {
-    if let Some((mut window, mut cursor_options)) = q_windows.iter_mut().next() {
+    if let Some((_, mut cursor_options)) = q_windows.iter_mut().next() {
         cursor_options.visible = false;
         cursor_options.grab_mode = CursorGrabMode::Locked;
     }
 }
+
 fn grab_cursor(mut q_windows: Query<(&mut Window, &mut CursorOptions), With<PrimaryWindow>>) {
-    if let Some((mut window, mut cursor_options)) = q_windows.iter_mut().next() {
+    if let Some((mut window, _)) = q_windows.iter_mut().next() {
         // Center the cursor
         let width = window.width();
         let height = window.height();
@@ -57,7 +91,7 @@ fn setup(
         Player,
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(10.0, PLAYER_SIZE.y / 2.0, 10.0), // Start in the middle of the 20x20 arena
+        Transform::from_xyz(16.0, PLAYER_SIZE.y / 2.0, 16.0), // Start in the top-left base
     ));
 
     // Light
@@ -67,14 +101,14 @@ fn setup(
             shadows_enabled: true,
             ..default()
         },
-        Transform::from_xyz(10.0, 20.0, 10.0).looking_at(Vec3::new(10.0, 0.0, 10.0), Vec3::Y),
+        Transform::from_xyz(80.0, 50.0, 54.0).looking_at(Vec3::new(80.0, 0.0, 54.0), Vec3::Y),
     ));
 
     // Camera
     commands.spawn((
         MainCamera { pitch: 0.3 },
         Camera3d::default(),
-        Transform::from_xyz(10.0, 5.0, 20.0).looking_at(Vec3::new(10.0, 0.0, 10.0), Vec3::Y),
+        Transform::from_xyz(16.0, 5.0, 26.0).looking_at(Vec3::new(16.0, 0.0, 16.0), Vec3::Y),
     ));
 }
 

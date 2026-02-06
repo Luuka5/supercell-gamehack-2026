@@ -1,15 +1,34 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
-pub struct ArenaPlugin;
+pub struct ArenaPlugin {
+    layout: String,
+}
+
+impl ArenaPlugin {
+    pub fn new(layout: &str) -> Self {
+        Self {
+            layout: layout.to_string(),
+        }
+    }
+}
+
+#[derive(Resource)]
+struct ArenaMapLayout(String);
 
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
+        // Parse the layout to determine dimensions
+        let lines: Vec<&str> = self.layout.trim().lines().collect();
+        let height = lines.len() as u32;
+        let width = lines.first().map(|l| l.len()).unwrap_or(0) as u32;
+
         app.insert_resource(ArenaConfig {
-            width: 20,
-            height: 20,
+            width,
+            height,
             tile_size: 4.0,
         })
+        .insert_resource(ArenaMapLayout(self.layout.clone()))
         .init_resource::<ArenaGrid>()
         .add_systems(Startup, spawn_arena)
         .add_systems(PostStartup, generate_nav_nodes);
@@ -52,6 +71,7 @@ pub struct NavNode {
 fn spawn_arena(
     mut commands: Commands,
     config: Res<ArenaConfig>,
+    layout: Res<ArenaMapLayout>,
     mut grid: ResMut<ArenaGrid>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -69,19 +89,30 @@ fn spawn_arena(
     let wall_mat = materials.add(Color::srgb(0.2, 0.2, 0.2));
     let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
 
-    // Offset to center the arena around (0,0) or keep it positive?
-    // Let's keep (0,0) as the bottom-left corner in world space for simplicity,
-    // but we might want to center the camera later.
+    let lines: Vec<&str> = layout.0.trim().lines().collect();
 
-    for x in 0..config.width {
-        for y in 0..config.height {
+    // Iterate through the layout string
+    // Note: The layout string is top-to-bottom (visual Y down), but our world coordinates usually have +Z as "down" or "south" in 3D.
+    // Let's map layout row -> Z (y in grid coords) and layout col -> X (x in grid coords).
+    // To match the previous loop behavior where (0,0) was bottom-left, we might need to reverse rows or just accept (0,0) is top-left of the string.
+    // Let's treat the first line as Z=0 (or Z=height-1 if we want to flip it).
+    // Standard convention: (0,0) is usually top-left in 2D grids from strings.
+    // Let's map:
+    // col -> x
+    // row -> y (where row 0 is y=0)
+
+    for (y, line) in lines.iter().enumerate() {
+        for (x, char) in line.chars().enumerate() {
+            let x = x as u32;
+            let y = y as u32; // Using y from 0 to height-1
+
             let position = Vec3::new(
                 x as f32 * config.tile_size,
                 0.0,
                 y as f32 * config.tile_size,
             );
 
-            // Spawn Floor Tile
+            // Always spawn a floor tile
             let tile_entity = commands
                 .spawn((
                     Tile { x, y },
@@ -93,23 +124,19 @@ fn spawn_arena(
 
             grid.tiles.insert((x, y), tile_entity);
 
-            // Spawn Walls on edges
-            if x == 0 || x == config.width - 1 || y == 0 || y == config.height - 1 {
-                let wall_entity = commands
-                    .spawn((
-                        Wall,
-                        Mesh3d(wall_mesh.clone()),
-                        MeshMaterial3d(wall_mat.clone()),
-                        Transform::from_translation(position + Vec3::Y * (wall_height / 2.0)),
-                    ))
-                    .id();
-                grid.occupants.insert((x, y), wall_entity);
-            }
-            // Randomly spawn obstacles (10% chance), but keep center clear for player
-            else if (x as i32 - (config.width as i32 / 2)).abs() > 2
-                || (y as i32 - (config.height as i32 / 2)).abs() > 2
-            {
-                if rand::random::<f32>() < 0.1 {
+            match char {
+                'X' => {
+                    let wall_entity = commands
+                        .spawn((
+                            Wall,
+                            Mesh3d(wall_mesh.clone()),
+                            MeshMaterial3d(wall_mat.clone()),
+                            Transform::from_translation(position + Vec3::Y * (wall_height / 2.0)),
+                        ))
+                        .id();
+                    grid.occupants.insert((x, y), wall_entity);
+                }
+                'O' => {
                     let obstacle_entity = commands
                         .spawn((
                             Obstacle,
@@ -119,6 +146,12 @@ fn spawn_arena(
                         ))
                         .id();
                     grid.occupants.insert((x, y), obstacle_entity);
+                }
+                '.' => {
+                    // Empty floor, nothing to do
+                }
+                _ => {
+                    // Unknown character, treat as floor
                 }
             }
         }
