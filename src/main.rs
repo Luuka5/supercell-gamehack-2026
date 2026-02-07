@@ -6,7 +6,7 @@ mod player;
 mod user;
 
 use ai::{AiPlayer, AiPlugin, Enemy, PathFollower, TargetDestination};
-use arena::ArenaPlugin;
+use arena::{ArenaConfig, ArenaPlugin};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
@@ -63,7 +63,7 @@ fn main() {
         .add_plugins(AiPlugin)
         .add_plugins(BuildingPlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, (grab_cursor, debug_log_positions))
+        .add_systems(Update, (grab_cursor, debug_log_positions, draw_tile_grid))
         .run();
 }
 
@@ -71,13 +71,58 @@ fn debug_log_positions(
     time: Res<Time>,
     query: Query<(Entity, &Transform), With<AiPlayer>>,
     mut timer: Local<f32>,
+    config: Res<ArenaConfig>,
 ) {
     *timer += time.delta_secs();
     if *timer > 2.0 {
         *timer = 0.0;
         for (entity, transform) in query.iter() {
-            info!("Entity {:?} at {}", entity, transform.translation);
+            let tile_x = ((transform.translation.x - config.tile_size * 0.5) / config.tile_size)
+                .floor() as i32;
+            let tile_z = ((transform.translation.z - config.tile_size * 0.5) / config.tile_size)
+                .floor() as i32;
+            info!(
+                "Entity {:?} at {} (Tile {}, {})",
+                entity, transform.translation, tile_x, tile_z
+            );
         }
+    }
+}
+
+fn draw_tile_grid(
+    mut gizmos: Gizmos,
+    config: Res<ArenaConfig>,
+    player_query: Query<&Transform, With<User>>,
+    ghost_query: Query<&Transform, With<crate::building::BuildGhost>>,
+) {
+    for x in 0..=config.width {
+        let world_x = x as f32 * config.tile_size;
+        gizmos.line(
+            Vec3::new(world_x, 0.05, 0.0),
+            Vec3::new(world_x, 0.05, config.height as f32 * config.tile_size),
+            Color::srgba(0.2, 0.8, 0.2, 0.5),
+        );
+    }
+
+    for y in 0..=config.height {
+        let world_z = y as f32 * config.tile_size;
+        gizmos.line(
+            Vec3::new(0.0, 0.05, world_z),
+            Vec3::new(config.width as f32 * config.tile_size, 0.05, world_z),
+            Color::srgba(0.2, 0.8, 0.2, 0.5),
+        );
+    }
+
+    if let Ok(player_transform) = player_query.single() {
+        let forward = player_transform.forward();
+        let start = player_transform.translation;
+        let end = start + forward * 3.0;
+        gizmos.line(start, end, Color::srgb(1.0, 0.0, 0.0));
+    }
+
+    if let Ok(ghost_transform) = ghost_query.single() {
+        let pos = ghost_transform.translation;
+        gizmos.sphere(pos + Vec3::Y * 0.5, 0.2, Color::srgb(1.0, 1.0, 0.0));
     }
 }
 

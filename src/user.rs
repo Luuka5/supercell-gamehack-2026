@@ -217,11 +217,35 @@ fn handle_build_type_selection(
     >,
     mut selected_query: Query<&mut SelectedBuildType, With<User>>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    player_query: Query<&Transform, With<User>>,
 ) {
     let mut selected = if let Ok(s) = selected_query.single_mut() {
         s
     } else {
         return;
+    };
+
+    let player_transform = if let Ok(t) = player_query.single() {
+        t
+    } else {
+        return;
+    };
+
+    let forward = player_transform.forward();
+    let abs_x = forward.x.abs();
+    let abs_z = forward.z.abs();
+    let turret_direction = if abs_x > abs_z {
+        if forward.x > 0.0 {
+            TurretDirection::East
+        } else {
+            TurretDirection::West
+        }
+    } else {
+        if forward.z > 0.0 {
+            TurretDirection::South
+        } else {
+            TurretDirection::North
+        }
     };
 
     if keyboard_input.just_pressed(KeyCode::Digit1) {
@@ -231,8 +255,11 @@ fn handle_build_type_selection(
     }
 
     if keyboard_input.just_pressed(KeyCode::Digit2) {
-        *selected = SelectedBuildType(StructureType::Turret(TurretDirection::North));
-        info!("Selected: Turret (key 2)");
+        *selected = SelectedBuildType(StructureType::Turret(turret_direction));
+        info!(
+            "Selected: Turret (key 2) facing {:?} (forward: {:?})",
+            turret_direction, forward
+        );
         return;
     }
 
@@ -242,8 +269,11 @@ fn handle_build_type_selection(
                 *selected = SelectedBuildType(StructureType::Obstacle);
                 info!("Selected: Obstacle");
             } else if text.0.contains("Turret") {
-                *selected = SelectedBuildType(StructureType::Turret(TurretDirection::North));
-                info!("Selected: Turret");
+                *selected = SelectedBuildType(StructureType::Turret(turret_direction));
+                info!(
+                    "Selected: Turret facing {:?} (forward: {:?})",
+                    turret_direction, forward
+                );
             }
         }
     }

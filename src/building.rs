@@ -1,5 +1,5 @@
 use crate::ai::{AiPlayer, TargetDestination};
-use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
+use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
 use crate::pathfinding::NavGraph;
 use crate::player::{
     Inventory, MainCamera, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
@@ -74,8 +74,8 @@ fn update_build_preview(
         let hit_point = ray.origin + ray.direction * t;
 
         // Snap to grid
-        let tile_x = ((hit_point.x - config.tile_size * 0.5) / config.tile_size).floor();
-        let tile_z = ((hit_point.z - config.tile_size * 0.5) / config.tile_size).floor();
+        let tile_x = (hit_point.x / config.tile_size).floor();
+        let tile_z = (hit_point.z / config.tile_size).floor();
 
         let snapped_pos = Vec3::new(
             tile_x * config.tile_size + config.tile_size * 0.5,
