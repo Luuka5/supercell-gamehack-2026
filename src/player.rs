@@ -43,18 +43,11 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                execute_movement,
-                camera_follow,
-                update_player_visibility,
-                update_inventory,
-            ),
+            (execute_movement, update_player_visibility, update_inventory),
         );
     }
 }
 
-const CAMERA_DISTANCE: f32 = 6.0;
-const CAMERA_HEIGHT_OFFSET: f32 = 2.0;
 const PLAYER_SPEED: f32 = 20.0;
 
 fn update_player_visibility(
@@ -151,25 +144,6 @@ fn execute_movement(
                 let move_dir = local_dir.normalize();
                 transform.translation += move_dir * PLAYER_SPEED * time.delta_secs();
             }
-        }
-    }
-}
-
-fn camera_follow(
-    player_query: Query<&Transform, (With<Player>, Without<Collectible>)>,
-    mut camera_query: Query<(&mut Transform, &MainCamera), (Without<Player>, Without<Collectible>)>,
-) {
-    if let Some(player_transform) = player_query.iter().next() {
-        if let Some((mut camera_transform, camera)) = camera_query.iter_mut().next() {
-            let look_target =
-                player_transform.translation + Vec3::new(0.0, CAMERA_HEIGHT_OFFSET, 0.0);
-
-            let pitch_rot = Quat::from_rotation_x(-camera.pitch);
-            let rotation = player_transform.rotation * pitch_rot;
-            let offset = rotation * Vec3::Z * CAMERA_DISTANCE;
-
-            camera_transform.translation = look_target + offset;
-            camera_transform.look_at(look_target, Vec3::Y);
         }
     }
 }

@@ -4,6 +4,9 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+const CAMERA_DISTANCE: f32 = 6.0;
+const CAMERA_HEIGHT_OFFSET: f32 = 2.0;
+
 #[derive(Component)]
 pub struct User;
 
@@ -30,6 +33,7 @@ impl Plugin for UserPlugin {
             Update,
             (
                 handle_user_input,
+                camera_follow,
                 handle_build_type_selection,
                 update_hud_counts,
                 update_hud_highlight,
@@ -294,6 +298,25 @@ fn update_hud_highlight(
             BuildType::Turret => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.3, 0.4, 1.0));
             }
+        }
+    }
+}
+
+fn camera_follow(
+    player_query: Query<&Transform, With<User>>,
+    mut camera_query: Query<(&mut Transform, &MainCamera), Without<User>>,
+) {
+    if let Some(player_transform) = player_query.iter().next() {
+        if let Some((mut camera_transform, camera)) = camera_query.iter_mut().next() {
+            let look_target =
+                player_transform.translation + Vec3::new(0.0, CAMERA_HEIGHT_OFFSET, 0.0);
+
+            let pitch_rot = Quat::from_rotation_x(-camera.pitch);
+            let rotation = player_transform.rotation * pitch_rot;
+            let offset = rotation * Vec3::Z * CAMERA_DISTANCE;
+
+            camera_transform.translation = look_target + offset;
+            camera_transform.look_at(look_target, Vec3::Y);
         }
     }
 }
