@@ -2,6 +2,10 @@ use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::pathfinding::has_line_of_sight;
 use bevy::prelude::*;
 
+pub const PLAYER_SPEED: f32 = 20.0;
+pub const ACCELERATION: f32 = 10.0;
+pub const DECELERATION: f32 = 30.0;
+
 #[derive(Component)]
 pub struct Player;
 
@@ -9,6 +13,7 @@ pub struct Player;
 pub struct MovementController {
     pub input_direction: Vec3,
     pub rotation_delta: f32,
+    pub current_velocity: Vec3,
 }
 
 #[derive(Component)]
@@ -110,7 +115,6 @@ impl Plugin for PlayerPlugin {
 }
 
 const PLAYER_SIZE: f32 = 0.5;
-const PLAYER_SPEED: f32 = 20.0;
 
 fn update_player_visibility(
     mut commands: Commands,
@@ -204,113 +208,137 @@ fn aabb_overlaps(
 
 fn execute_movement(
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &MovementController), (With<Player>, Without<Collectible>)>,
+    mut query: Query<
+        (&mut Transform, &mut MovementController),
+        (With<Player>, Without<Collectible>),
+    >,
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
     structure_query: Query<&Structure>,
 ) {
-    for (mut transform, controller) in query.iter_mut() {
+    for (mut transform, mut controller) in query.iter_mut() {
         if controller.rotation_delta != 0.0 {
             transform.rotate_y(controller.rotation_delta);
         }
 
-        if controller.input_direction.length_squared() > 0.0 {
+        let target_velocity = if controller.input_direction.length_squared() > 0.0 {
             let local_dir = transform.forward().as_vec3() * controller.input_direction.z
                 + transform.right().as_vec3() * controller.input_direction.x;
-
             if local_dir.length_squared() > 0.0 {
-                let move_dir = local_dir.normalize();
-                let speed = PLAYER_SPEED * time.delta_secs();
+                local_dir.normalize() * PLAYER_SPEED
+            } else {
+                Vec3::ZERO
+            }
+        } else {
+            Vec3::ZERO
+        };
 
-                let pos_x = transform.translation.x;
-                let pos_z = transform.translation.z;
-                let half = PLAYER_SIZE * 0.5;
-                let tile_size = config.tile_size;
+        let dt = time.delta_secs();
+        let vel_diff = target_velocity - controller.current_velocity;
 
-                let dx = move_dir.x * speed;
-                let dz = move_dir.z * speed;
+        let mut velocity = if target_velocity.length() < controller.current_velocity.length() {
+            controller.current_velocity + vel_diff * DECELERATION * dt
+        } else {
+            controller.current_velocity + vel_diff * ACCELERATION * dt
+        };
 
-                let player_min_x = pos_x - half;
-                let player_max_x = pos_x + half;
-                let player_min_z = pos_z - half;
-                let player_max_z = pos_z + half;
+        if velocity.length() > PLAYER_SPEED {
+            velocity = velocity.normalize() * PLAYER_SPEED;
+        }
 
-                let next_min_x = pos_x + dx - half;
-                let next_max_x = pos_x + dx + half;
-                let next_min_z = pos_z + dz - half;
-                let next_max_z = pos_z + dz + half;
+        if (velocity.length() < 0.1) && (target_velocity == Vec3::ZERO) {
+            velocity = Vec3::ZERO;
+        }
 
-                let current_tile_x = ((pos_x - tile_size * 0.5) / tile_size).floor() as i32;
-                let current_tile_z = ((pos_z - tile_size * 0.5) / tile_size).floor() as i32;
+        controller.current_velocity = velocity;
 
-                let next_tile_x_x = ((pos_x + dx - tile_size * 0.5) / tile_size).floor() as i32;
-                let next_tile_z_z = ((pos_z + dz - tile_size * 0.5) / tile_size).floor() as i32;
+        if velocity.length_squared() > 0.0 {
+            let pos_x = transform.translation.x;
+            let pos_z = transform.translation.z;
+            let half = PLAYER_SIZE * 0.5;
+            let tile_size = config.tile_size;
 
-                let mut move_x = true;
-                let mut move_z = true;
+            let dx = velocity.x * dt;
+            let dz = velocity.z * dt;
 
-                for ((&key, &entity)) in grid.occupants.iter() {
-                    let (tile_x, tile_z) = key;
-                    let Ok(structure) = structure_query.get(entity) else {
-                        continue;
-                    };
+            let player_min_x = pos_x - half;
+            let player_max_x = pos_x + half;
+            let player_min_z = pos_z - half;
+            let player_max_z = pos_z + half;
 
-                    let half_size = tile_size * 0.5 * structure.collider_scale;
-                    let center_x = tile_x as f32 * tile_size + tile_size * 0.5;
-                    let center_z = tile_z as f32 * tile_size + tile_size * 0.5;
+            let next_min_x = pos_x + dx - half;
+            let next_max_x = pos_x + dx + half;
+            let next_min_z = pos_z + dz - half;
+            let next_max_z = pos_z + dz + half;
 
-                    let struct_min_x = center_x - half_size;
-                    let struct_max_x = center_x + half_size;
-                    let struct_min_z = center_z - half_size;
-                    let struct_max_z = center_z + half_size;
+            let mut move_x = true;
+            let mut move_z = true;
 
-                    if move_x
-                        && aabb_overlaps(
-                            next_min_x,
-                            player_min_z,
-                            next_max_x,
-                            player_max_z,
-                            struct_min_x,
-                            struct_min_z,
-                            struct_max_x,
-                            struct_max_z,
-                        )
-                    {
-                        move_x = false;
-                    }
+            for (&key, &entity) in grid.occupants.iter() {
+                let (tile_x, tile_z) = key;
+                let Ok(structure) = structure_query.get(entity) else {
+                    continue;
+                };
 
-                    if move_z
-                        && aabb_overlaps(
-                            player_min_x,
-                            next_min_z,
-                            player_max_x,
-                            next_max_z,
-                            struct_min_x,
-                            struct_min_z,
-                            struct_max_x,
-                            struct_max_z,
-                        )
-                    {
-                        move_z = false;
-                    }
+                let half_size = tile_size * 0.5 * structure.collider_scale;
+                let center_x = tile_x as f32 * tile_size + tile_size * 0.5;
+                let center_z = tile_z as f32 * tile_size + tile_size * 0.5;
+
+                let struct_min_x = center_x - half_size;
+                let struct_max_x = center_x + half_size;
+                let struct_min_z = center_z - half_size;
+                let struct_max_z = center_z + half_size;
+
+                if move_x
+                    && aabb_overlaps(
+                        next_min_x,
+                        player_min_z,
+                        next_max_x,
+                        player_max_z,
+                        struct_min_x,
+                        struct_min_z,
+                        struct_max_x,
+                        struct_max_z,
+                    )
+                {
+                    move_x = false;
                 }
 
-                let mut final_dx = 0.0;
-                let mut final_dz = 0.0;
-
-                if move_x && move_z {
-                    final_dx = dx;
-                    final_dz = dz;
-                } else if move_x {
-                    final_dx = dx;
-                } else if move_z {
-                    final_dz = dz;
+                if move_z
+                    && aabb_overlaps(
+                        player_min_x,
+                        next_min_z,
+                        player_max_x,
+                        next_max_z,
+                        struct_min_x,
+                        struct_min_z,
+                        struct_max_x,
+                        struct_max_z,
+                    )
+                {
+                    move_z = false;
                 }
+            }
 
-                if final_dx != 0.0 || final_dz != 0.0 {
-                    transform.translation.x += final_dx;
-                    transform.translation.z += final_dz;
-                }
+            let mut final_dx = 0.0;
+            let mut final_dz = 0.0;
+
+            if move_x && move_z {
+                final_dx = dx;
+                final_dz = dz;
+            } else if move_x {
+                final_dx = dx;
+                controller.current_velocity.z = 0.0;
+            } else if move_z {
+                final_dz = dz;
+                controller.current_velocity.x = 0.0;
+            } else {
+                controller.current_velocity = Vec3::ZERO;
+            }
+
+            if final_dx != 0.0 || final_dz != 0.0 {
+                transform.translation.x += final_dx;
+                transform.translation.z += final_dz;
             }
         }
     }
