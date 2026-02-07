@@ -152,7 +152,7 @@ pub struct Obstacle;
 #[derive(Component)]
 pub struct SightBlocking;
 
-#[derive(Component, Clone, Copy)]
+#[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum CollectibleType {
     Obstacle,
     Turret,

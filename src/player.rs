@@ -1,9 +1,10 @@
 use crate::arena::areas::{AreaID, AreaMap};
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::building::Structure;
+use crate::logging::{GameEvent, MatchLog};
 use crate::pathfinding::{find_path, has_line_of_sight, NavGraph};
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use std::collections::HashMap;
 
 pub const PLAYER_SPEED: f32 = 20.0;
 pub const ACCELERATION: f32 = 10.0;
@@ -50,28 +51,34 @@ impl Plugin for PlayerPlugin {
 
 fn update_player_visibility(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
+    mut player_query: Query<
+        (Entity, &Transform, &mut PlayerStatus),
+        (With<Player>, Without<Collectible>),
+    >,
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
     area_map: Option<Res<AreaMap>>,
     nav_graph: Res<NavGraph>,
+    mut match_log: ResMut<MatchLog>,
+    time: Res<Time>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
-        .map(|(e, t)| (e, t.translation))
+        .map(|(e, t, _)| (e, t.translation))
         .collect();
 
-    for (entity, pos) in &players {
+    for (entity, transform, mut status) in player_query.iter_mut() {
+        let pos = transform.translation;
         let mut visible = Vec::new();
         let mut nearest_enemy_pos = None;
         let mut nearest_dist = f32::MAX;
 
         for (other_entity, other_pos) in &players {
-            if *entity == *other_entity {
+            if entity == *other_entity {
                 continue;
             }
 
-            if has_line_of_sight(*pos, *other_pos, &config, &grid) {
+            if has_line_of_sight(pos, *other_pos, &config, &grid) {
                 visible.push(*other_entity);
                 let dist = pos.distance(*other_pos);
                 if dist < nearest_dist {
@@ -101,24 +108,33 @@ fn update_player_visibility(
                     area.center.1 as f32 * config.tile_size + config.tile_size * 0.5,
                 );
 
-                if has_line_of_sight(*pos, area_center_world, &config, &grid) {
+                if has_line_of_sight(pos, area_center_world, &config, &grid) {
                     visible_areas_from_self.push(area.id.clone());
                 }
             }
 
-            Some(map.get_area_id(tile_x, tile_y))
+            let new_area_id = map.get_area_id(tile_x, tile_y);
+
+            // Log area change
+            if status.current_area_id.as_ref() != Some(&new_area_id) {
+                match_log.add(GameEvent::AreaEntered {
+                    entity,
+                    area_id: new_area_id.clone(),
+                    time: time.elapsed_secs(),
+                });
+            }
+
+            Some(new_area_id)
         } else {
             None
         };
 
-        commands.entity(*entity).insert(PlayerStatus {
-            visible_players: visible,
-            nearest_enemy_position: nearest_enemy_pos,
-            nearest_enemy_dist: nearest_dist,
-            current_area_id: current_area,
-            area_distances,
-            visible_areas_from_self,
-        });
+        status.visible_players = visible;
+        status.nearest_enemy_position = nearest_enemy_pos;
+        status.nearest_enemy_dist = nearest_dist;
+        status.current_area_id = current_area;
+        status.area_distances = area_distances;
+        status.visible_areas_from_self = visible_areas_from_self;
     }
 }
 
@@ -127,6 +143,9 @@ fn update_inventory(
     player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
     mut inventory_query: Query<&mut Inventory, With<Player>>,
     collectible_query: Query<(Entity, &Transform, &Collectible), Without<Player>>,
+    mut match_log: ResMut<MatchLog>,
+    time: Res<Time>,
+    config: Res<ArenaConfig>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
@@ -145,6 +164,19 @@ fn update_inventory(
         for (collectible_entity, collectible_pos, ty) in &collectibles {
             if player_pos.distance(*collectible_pos) < 2.0 {
                 collected_entities.push(*collectible_entity);
+
+                let tile_x = ((collectible_pos.x - config.tile_size * 0.5) / config.tile_size)
+                    .floor() as u32;
+                let tile_y = ((collectible_pos.z - config.tile_size * 0.5) / config.tile_size)
+                    .floor() as u32;
+
+                match_log.add(GameEvent::ItemCollected {
+                    entity: *player_entity,
+                    item_type: *ty,
+                    location: (tile_x, tile_y),
+                    time: time.elapsed_secs(),
+                });
+
                 match ty {
                     crate::arena::CollectibleType::Obstacle => collected_obstacles += 1,
                     crate::arena::CollectibleType::Turret => collected_turrets += 1,

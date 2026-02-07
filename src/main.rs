@@ -2,6 +2,7 @@ mod ai;
 mod arena;
 mod building;
 mod combat;
+mod logging;
 mod pathfinding;
 mod player;
 mod user;
@@ -14,6 +15,7 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
 use building::StructureType;
 use combat::{CombatPlugin, Enemy, Hp};
+use logging::LoggingPlugin;
 use player::{Inventory, MovementController, Player, PlayerPlugin, PlayerStatus};
 use user::{MainCamera, SelectedBuildType, User, UserPlugin};
 
@@ -86,6 +88,7 @@ fn main() {
         .add_plugins(AiPlugin)
         .add_plugins(BuildingPlugin)
         .add_plugins(CombatPlugin)
+        .add_plugins(LoggingPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, (grab_cursor, debug_log_positions, draw_tile_grid))
         .run();
