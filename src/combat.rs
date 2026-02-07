@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::logging::{GameEvent, MatchLog};
 use crate::user::User;
 use crate::GameState;
 
@@ -113,73 +114,125 @@ fn turret_shooting_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    turret_query: Query<(Entity, &Transform, &Turret), Without<Enemy>>,
-    mut enemy_query: Query<(Entity, &Transform, &mut Hp, Option<&User>), With<Enemy>>,
+    turret_query: Query<(Entity, &Transform, &Turret)>,
+    mut target_query: Query<(Entity, &Transform, &mut Hp, Option<&User>)>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut match_log: ResMut<MatchLog>,
+    mut gizmos: Gizmos,
 ) {
     let current_time = time.elapsed_secs();
 
     for (turret_entity, turret_transform, turret) in turret_query.iter() {
         if !turret.is_active(current_time) {
+            // Visual indicator for cooldown (e.g., red box on top)
+            // We can spawn a temporary marker or change material color.
+            // For simplicity, let's draw a red gizmo box above it.
+            gizmos.cube(
+                Transform::from_translation(turret_transform.translation + Vec3::Y * 2.5)
+                    .with_scale(Vec3::splat(0.5)),
+                Color::srgb(1.0, 0.0, 0.0),
+            );
             continue;
+        } else {
+            // Visual indicator for ready (green box)
+            gizmos.cube(
+                Transform::from_translation(turret_transform.translation + Vec3::Y * 2.5)
+                    .with_scale(Vec3::splat(0.5)),
+                Color::srgb(0.0, 1.0, 0.0),
+            );
         }
 
         let turret_pos = turret_transform.translation;
+
         let direction_vec = turret.direction.to_vec3();
 
-        let mut closest_enemy: Option<Entity> = None;
+        let mut closest_target: Option<Entity> = None;
         let mut closest_distance = f32::MAX;
 
-        for (enemy_entity, enemy_transform, _, _) in enemy_query.iter() {
-            let enemy_pos = enemy_transform.translation;
-            let to_enemy = enemy_pos - turret_pos;
-            let distance = to_enemy.length();
+        for (target_entity, target_transform, _, _) in target_query.iter() {
+            // Don't shoot owner
+            if target_entity == turret.owner {
+                continue;
+            }
+
+            // Don't shoot other turrets (unless they have HP, which they don't currently)
+            // Actually target_query filters for Hp, so structures without Hp are ignored.
+
+            let target_pos = target_transform.translation;
+            let to_target = target_pos - turret_pos;
+            let distance = to_target.length();
 
             if distance < 15.0 {
-                let enemy_dir = to_enemy.normalize();
-                let dot = enemy_dir.dot(direction_vec);
+                let target_dir = to_target.normalize();
+                let dot = target_dir.dot(direction_vec);
 
-                if dot > 0.95 {
+                // 45 degree cone (half angle 22.5) -> cos(22.5) ~= 0.923
+                // 90 degree cone (half angle 45) -> cos(45) ~= 0.707
+                // User asked for "at least 45 degree cone". Let's assume 45 degrees total width (+/- 22.5).
+                // Or maybe 45 degrees to each side (90 total)? "45 degree cone" usually means total angle.
+                // Let's go with 0.707 (45 degrees to each side, 90 total) to be generous and make them effective.
+                if dot > 0.707 {
                     if distance < closest_distance {
                         closest_distance = distance;
-                        closest_enemy = Some(enemy_entity);
+                        closest_target = Some(target_entity);
                     }
                 }
             }
         }
 
-        if let Some(enemy_entity) = closest_enemy {
+        if let Some(target_entity) = closest_target {
             commands.entity(turret_entity).insert(Turret {
                 owner: turret.owner,
                 direction: turret.direction,
                 last_shot: current_time,
             });
 
-            if let Ok((enemy_entity, _enemy_transform, mut hp, user)) =
-                enemy_query.get_mut(enemy_entity)
+            if let Ok((target_entity, target_transform, mut hp, user)) =
+                target_query.get_mut(target_entity)
             {
                 hp.take_damage(TURRET_DAMAGE);
+
+                // Visual feedback: Line from turret barrel to target
+                let barrel_pos = turret_pos + Vec3::Y * 1.5; // Approx barrel height
+                gizmos.line(
+                    barrel_pos,
+                    target_transform.translation,
+                    Color::srgb(1.0, 1.0, 0.0),
+                );
+
+                match_log.add(GameEvent::DamageDealt {
+                    attacker: turret.owner,
+                    victim: target_entity,
+                    amount: TURRET_DAMAGE,
+                    time: current_time,
+                });
+
                 if hp.is_alive() {
                     info!(
                         "Turret hit {:?}! HP: {}/{}",
-                        enemy_entity, hp.current, hp.max
+                        target_entity, hp.current, hp.max
                     );
                 } else {
-                    info!("{:?} destroyed! Final HP: 0/{}", enemy_entity, hp.max);
+                    info!("{:?} destroyed! Final HP: 0/{}", target_entity, hp.max);
+
+                    match_log.add(GameEvent::PlayerEliminated {
+                        entity: target_entity,
+                        killer: Some(turret.owner),
+                        time: current_time,
+                    });
+
                     if user.is_some() {
                         info!("GAME OVER");
                         next_state.set(GameState::GameOver);
                     } else {
-                        commands.entity(enemy_entity).despawn();
+                        // Check if it was the Enemy
+                        // We can't check With<Enemy> here easily because we are iterating generic targets.
+                        // But if it's not User, it's likely the AI.
+                        // For now, just despawn.
+                        commands.entity(target_entity).despawn();
                     }
                 }
             }
-
-            commands.spawn((
-                Mesh3d(meshes.add(Cuboid::new(0.2, 0.2, 0.2))),
-                MeshMaterial3d(materials.add(Color::srgb(1.0, 1.0, 0.0))),
-                Transform::from_translation(turret_pos + Vec3::Y * 2.0),
-            ));
         }
     }
 }

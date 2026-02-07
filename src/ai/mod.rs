@@ -2,13 +2,14 @@ use crate::arena::areas::AreaMap;
 use crate::arena::{ArenaConfig, ArenaGrid, Obstacle};
 use crate::building::{Structure, StructureType};
 use crate::combat::{Hp, Turret, TurretDirection};
+use crate::logging::{GameEvent, MatchLog};
 use crate::pathfinding::{find_path, NavGraph};
 use crate::player::{Inventory, MovementController, PlayerStatus};
 use bevy::prelude::*;
 
 pub mod rules;
 
-use rules::{Action, Condition, Rule, RuleSet};
+use rules::{Action, Condition, RuleSet};
 
 pub struct AiPlugin;
 
@@ -51,16 +52,20 @@ fn evaluate_condition(
     hp: &Hp,
     inventory: &Inventory,
 ) -> bool {
-    match condition {
+    let result = match condition {
         Condition::True => true,
         Condition::IsEnemyVisible => !status.visible_players.is_empty(),
         Condition::IsHealthLow { threshold } => hp.current <= *threshold,
         Condition::InArea(area_id) => status.current_area_id.as_ref() == Some(area_id),
-        Condition::HasItem { item, count } => match item.as_str() {
-            "obstacle" => inventory.obstacles >= *count,
-            "turret" => inventory.turrets >= *count,
-            _ => false,
-        },
+        Condition::HasItem { item, count } => {
+            let has = match item.as_str() {
+                "obstacle" => inventory.obstacles >= *count,
+                "turret" => inventory.turrets >= *count,
+                _ => false,
+            };
+            info!("Checking HasItem: {} >= {} -> {}", item, count, has);
+            has
+        }
         Condition::IsUnderAttack => false, // TODO: Implement attack detection
         Condition::And(conditions) => conditions
             .iter()
@@ -69,7 +74,8 @@ fn evaluate_condition(
             .iter()
             .any(|c| evaluate_condition(c, status, hp, inventory)),
         Condition::Not(condition) => !evaluate_condition(condition, status, hp, inventory),
-    }
+    };
+    result
 }
 
 fn rule_evaluation_system(
@@ -77,6 +83,7 @@ fn rule_evaluation_system(
     mut query: Query<
         (
             Entity,
+            &Name,
             &AiRuleSet,
             &PlayerStatus,
             &Hp,
@@ -92,15 +99,32 @@ fn rule_evaluation_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut grid: ResMut<ArenaGrid>,
     mut nav_graph: ResMut<NavGraph>,
+    mut match_log: ResMut<MatchLog>,
+    time: Res<Time>,
 ) {
-    for (entity, rule_set, status, hp, mut inventory, transform, mut target) in query.iter_mut() {
+    for (entity, name, rule_set, status, hp, mut inventory, transform, mut target) in
+        query.iter_mut()
+    {
         // Sort rules by priority (descending)
         let mut sorted_rules = rule_set.0.rules.clone();
         sorted_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
 
         for rule in sorted_rules {
-            if evaluate_condition(&rule.condition, status, hp, &inventory) {
-                // info!("AI {:?} executing rule: {}", entity, rule.name);
+            let condition_met = evaluate_condition(&rule.condition, status, hp, &inventory);
+
+            match_log.add(GameEvent::AiDecision {
+                entity: entity,
+                entity_name: name.to_string(),
+                rule_name: rule.name.clone(),
+                condition_met,
+                inventory_obstacles: inventory.obstacles,
+                inventory_turrets: inventory.turrets,
+                visible_enemies: status.visible_players.len(),
+                time: time.elapsed_secs(),
+            });
+
+            if condition_met {
+                info!("AI {:?} ({}) executing rule: {}", entity, name, rule.name);
                 match &rule.action {
                     Action::MoveToArea(area_id) => {
                         if let Some((x, y)) = area_map.get_center(area_id.clone()) {
@@ -205,6 +229,12 @@ fn rule_evaluation_system(
                                             &grid,
                                             &mut nav_graph,
                                         );
+                                        match_log.add(GameEvent::StructureBuilt {
+                                            entity,
+                                            structure: StructureType::Obstacle,
+                                            location: (tile_x, tile_y),
+                                            time: time.elapsed_secs(),
+                                        });
                                         info!("AI Built Obstacle at ({}, {})", tile_x, tile_y);
                                     }
                                 }
@@ -277,6 +307,12 @@ fn rule_evaluation_system(
                                             &grid,
                                             &mut nav_graph,
                                         );
+                                        match_log.add(GameEvent::StructureBuilt {
+                                            entity,
+                                            structure: StructureType::Turret,
+                                            location: (tile_x, tile_y),
+                                            time: time.elapsed_secs(),
+                                        });
                                         info!(
                                             "AI Built Turret at ({}, {}) facing {:?}",
                                             tile_x, tile_y, turret_dir

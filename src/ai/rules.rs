@@ -44,6 +44,28 @@ pub struct RuleSet {
     pub rules: Vec<Rule>,
 }
 
+impl RuleSet {
+    pub fn new_turret_only() -> Self {
+        Self {
+            rules: vec![
+                // Rule for debugging: Always try to build a turret if available.
+                Rule {
+                    name: "DebugBuildTurret".to_string(),
+                    priority: 100,
+                    condition: Condition::HasItem {
+                        item: "turret".to_string(),
+                        count: 1,
+                    },
+                    action: Action::Build {
+                        structure: StructureType::Turret,
+                        direction: None,
+                    },
+                },
+            ],
+        }
+    }
+}
+
 impl Default for RuleSet {
     fn default() -> Self {
         Self {
@@ -55,10 +77,10 @@ impl Default for RuleSet {
                     condition: Condition::IsHealthLow { threshold: 1 },
                     action: Action::MoveToArea(AreaID("EnemyBase".to_string())),
                 },
-                // Rule 2: Deploy Combat Turret (High Priority)
+                // Rule 2: Deploy Combat Turret (High Priority - must be higher than EngageEnemy)
                 Rule {
                     name: "DeployCombatTurret".to_string(),
-                    priority: 90,
+                    priority: 95,
                     condition: Condition::And(vec![
                         Condition::IsEnemyVisible,
                         Condition::HasItem {

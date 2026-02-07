@@ -171,8 +171,8 @@ fn setup(
         Name::new("User"),
         PlayerStatus::default(),
         Inventory {
-            obstacles: 3,
-            turrets: 3,
+            obstacles: 6,
+            turrets: 4,
         },
         MovementController::default(),
         SelectedBuildType(StructureType::Obstacle),
@@ -208,11 +208,14 @@ fn setup(
         Player,
         Name::new("Enemy"),
         PlayerStatus::default(),
-        Inventory::default(),
+        Inventory {
+            obstacles: 6,
+            turrets: 4,
+        },
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 4, y: 2 }, // Go to User's start (Grid 4, 2)
-        AiRuleSet(ai::rules::RuleSet::default()),
+        AiRuleSet(ai::rules::RuleSet::new_turret_only()),
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))), // Red Enemy

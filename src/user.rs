@@ -1,6 +1,6 @@
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::building::{Structure, StructureType};
-use crate::combat::{Hp, TurretDirection};
+use crate::combat::{Enemy, Hp, TurretDirection};
 use crate::player::{Inventory, MovementController};
 use crate::GameState;
 use bevy::input::mouse::AccumulatedMouseMotion;
@@ -39,6 +39,12 @@ pub struct HpBarBackground;
 
 #[derive(Component)]
 pub struct HpBarFill;
+
+#[derive(Component)]
+pub struct HpText;
+
+#[derive(Component)]
+pub struct EnemyHpText;
 
 #[derive(Component)]
 pub struct MainCamera {
@@ -154,7 +160,7 @@ fn setup_hud(mut commands: Commands) {
             HudContainer,
             Node {
                 width: Val::Px(220.0),
-                height: Val::Px(140.0),
+                height: Val::Px(220.0),
                 left: Val::Px(20.0),
                 top: Val::Px(20.0),
                 flex_direction: FlexDirection::Column,
@@ -280,6 +286,30 @@ fn setup_hud(mut commands: Commands) {
         BackgroundColor(Color::srgb(0.0, 0.8, 0.2)),
         HpBarFill,
         ChildOf(hp_bar_bg),
+    ));
+
+    commands.spawn((
+        Text::new("3/3"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        HpText,
+        ChildOf(panel),
+    ));
+
+    commands.spawn((
+        HudContainer,
+        Text::new("Enemy HP:"),
+        TextFont::from_font_size(18.0),
+        TextColor(Color::WHITE),
+        ChildOf(panel),
+    ));
+
+    commands.spawn((
+        Text::new("?/?"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        EnemyHpText,
+        ChildOf(panel),
     ));
 }
 
@@ -528,12 +558,29 @@ fn ray_aabb_intersection(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) ->
 
 fn update_hp_bar(
     mut hp_bar_query: Query<&mut Node, With<HpBarFill>>,
+    mut hp_text_query: Query<&mut Text, (With<HpText>, Without<EnemyHpText>)>,
+    mut enemy_hp_text_query: Query<&mut Text, (With<EnemyHpText>, Without<HpText>)>,
     player_query: Query<&Hp, With<User>>,
+    enemy_query: Query<&Hp, With<Enemy>>,
 ) {
     if let Ok(hp) = player_query.single() {
         for mut node in hp_bar_query.iter_mut() {
             let percentage = hp.current as f32 / hp.max as f32;
             node.width = Val::Percent(percentage * 100.0);
+        }
+        for mut text in hp_text_query.iter_mut() {
+            text.0 = format!("{}/{}", hp.current, hp.max);
+        }
+    }
+
+    if let Some(enemy_hp) = enemy_query.iter().next() {
+        for mut text in enemy_hp_text_query.iter_mut() {
+            text.0 = format!("{}/{}", enemy_hp.current, enemy_hp.max);
+        }
+    } else {
+        // Enemy might be dead or not spawned yet
+        for mut text in enemy_hp_text_query.iter_mut() {
+            text.0 = "Dead".to_string();
         }
     }
 }
