@@ -1,5 +1,5 @@
 use crate::ai::{AiPlayer, TargetDestination};
-use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
+use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
 use crate::player::{MainCamera, User};
 use bevy::prelude::*;

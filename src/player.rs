@@ -1,4 +1,4 @@
-use crate::arena::{ArenaConfig, ArenaGrid};
+use crate::arena::{ArenaConfig, ArenaGrid, Collectible, CollectibleType};
 use crate::pathfinding::has_line_of_sight;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
@@ -15,6 +15,7 @@ impl Plugin for PlayerPlugin {
                 execute_movement,
                 camera_follow,
                 update_player_visibility,
+                update_inventory,
             ),
         );
     }
@@ -40,6 +41,12 @@ pub struct MainCamera {
 #[derive(Component, Default)]
 pub struct PlayerStatus {
     pub visible_players: Vec<Entity>,
+}
+
+#[derive(Component, Default)]
+pub struct Inventory {
+    pub obstacles: u32,
+    pub turrets: u32,
 }
 
 // Constants
@@ -76,6 +83,48 @@ fn update_player_visibility(
         commands.entity(*entity).insert(PlayerStatus {
             visible_players: visible,
         });
+    }
+}
+
+fn update_inventory(
+    mut commands: Commands,
+    player_query: Query<(Entity, &Transform), With<Player>>,
+    mut inventory_query: Query<&mut Inventory>,
+    collectible_query: Query<(Entity, &Transform, &Collectible), With<Collectible>>,
+) {
+    let players: Vec<(Entity, Vec3)> = player_query
+        .iter()
+        .map(|(e, t)| (e, t.translation))
+        .collect();
+    let collectibles: Vec<(Entity, Vec3, CollectibleType)> = collectible_query
+        .iter()
+        .map(|(e, t, c)| (e, t.translation, c.ty))
+        .collect();
+
+    for (player_entity, player_pos) in &players {
+        let mut collected_obstacles = 0;
+        let mut collected_turrets = 0;
+
+        for (collectible_entity, collectible_pos, ty) in &collectibles {
+            if player_pos.distance(*collectible_pos) < 2.0 {
+                commands.entity(*collectible_entity).despawn();
+                match ty {
+                    CollectibleType::Obstacle => collected_obstacles += 1,
+                    CollectibleType::Turret => collected_turrets += 1,
+                }
+            }
+        }
+
+        if collected_obstacles > 0 || collected_turrets > 0 {
+            if let Ok(mut inventory) = inventory_query.get_mut(*player_entity) {
+                inventory.obstacles += collected_obstacles;
+                inventory.turrets += collected_turrets;
+                info!(
+                    "Collected! Obstacles: {}, Turrets: {}",
+                    inventory.obstacles, inventory.turrets
+                );
+            }
+        }
     }
 }
 

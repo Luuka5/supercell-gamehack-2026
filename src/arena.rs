@@ -1,6 +1,7 @@
 use crate::pathfinding::NavGraph;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use rand::prelude::*;
 
 pub struct ArenaPlugin {
     layout: String,
@@ -63,6 +64,17 @@ pub struct Obstacle;
 
 #[derive(Component)]
 pub struct SightBlocking;
+
+#[derive(Component, Clone, Copy)]
+pub enum CollectibleType {
+    Obstacle,
+    Turret,
+}
+
+#[derive(Component)]
+pub struct Collectible {
+    pub ty: CollectibleType,
+}
 
 fn spawn_arena(
     mut commands: Commands,
@@ -134,7 +146,33 @@ fn spawn_arena(
                         .id();
                     grid.occupants.insert((x, y), obstacle_entity);
                 }
-                _ => {}
+                _ => {
+                    let mut rng = rand::rng();
+                    if rng.random_range(0.0..1.0) < 0.05 {
+                        let collectible_type = if rng.random_bool(0.5) {
+                            CollectibleType::Obstacle
+                        } else {
+                            CollectibleType::Turret
+                        };
+
+                        let collectible_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
+                        let collectible_mat = if matches!(collectible_type, CollectibleType::Turret)
+                        {
+                            materials.add(Color::srgb(0.0, 0.0, 1.0))
+                        } else {
+                            materials.add(Color::srgb(1.0, 1.0, 0.0))
+                        };
+
+                        commands.spawn((
+                            Collectible {
+                                ty: collectible_type,
+                            },
+                            Mesh3d(collectible_mesh),
+                            MeshMaterial3d(collectible_mat),
+                            Transform::from_translation(position + Vec3::Y * 0.5),
+                        ));
+                    }
+                }
             }
         }
     }
