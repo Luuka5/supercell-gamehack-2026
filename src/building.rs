@@ -1,7 +1,8 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
-use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType, User};
+use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType};
+use crate::user::User;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 

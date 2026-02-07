@@ -3,6 +3,7 @@ mod arena;
 mod building;
 mod pathfinding;
 mod player;
+mod user;
 
 use ai::{AiPlayer, AiPlugin, Enemy, PathFollower, TargetDestination};
 use arena::ArenaPlugin;
@@ -11,8 +12,9 @@ use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
 use player::{
     BuildType, Inventory, MainCamera, MovementController, Player, PlayerPlugin, PlayerStatus,
-    SelectedBuildType, User,
+    SelectedBuildType,
 };
+use user::{User, UserPlugin};
 
 // --- Game Constants ---
 // Note: These are also defined in player.rs for now.
@@ -57,6 +59,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
         .add_plugins(PlayerPlugin)
+        .add_plugins(UserPlugin)
         .add_plugins(AiPlugin)
         .add_plugins(BuildingPlugin)
         .add_systems(Startup, setup)
