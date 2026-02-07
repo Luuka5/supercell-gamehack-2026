@@ -298,7 +298,7 @@ fn handle_build_input(
                             Obstacle,
                             Structure {
                                 ty: StructureType::Turret,
-                                collider_scale: 0.7,
+                                collider_scale: 0.5,
                             },
                             Turret {
                                 owner: player_entity,

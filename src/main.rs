@@ -7,7 +7,8 @@ mod player;
 mod user;
 
 use ai::{AiPlayer, AiPlugin, AiRuleSet, PathFollower, TargetDestination};
-use arena::{ArenaConfig, ArenaPlugin};
+use arena::areas::{Area, AreaID};
+use arena::{ArenaConfig, ArenaDescription, ArenaPlugin, SpawnPoints};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
@@ -63,10 +64,23 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ";
 
 fn main() {
+    let arena_description = ArenaDescription {
+        layout: ARENA_LAYOUT.to_string(),
+        areas: vec![
+            Area::new(AreaID::UserBase, 0, 0, 10, 10),
+            Area::new(AreaID::EnemyBase, 30, 0, 39, 10),
+            Area::new(AreaID::CenterArena, 11, 0, 29, 27),
+            Area::new(AreaID::NorthCorridor, 0, 11, 39, 27),
+        ],
+        player_spawn: Vec3::new(18.0, PLAYER_SIZE.y / 2.0, 10.0),
+        ai_spawn: Vec3::new(26.0, PLAYER_SIZE.y / 2.0, 10.0),
+        enemy_spawn: Vec3::new(142.0, PLAYER_SIZE.y / 2.0, 10.0),
+    };
+
     App::new()
         .add_plugins(DefaultPlugins)
         .init_state::<GameState>()
-        .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
+        .add_plugins(ArenaPlugin::new(arena_description))
         .add_plugins(PlayerPlugin)
         .add_plugins(UserPlugin)
         .add_plugins(AiPlugin)
@@ -142,6 +156,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    spawn_points: Res<SpawnPoints>,
 ) {
     // Player (User controlled)
     commands.spawn((
@@ -158,10 +173,11 @@ fn setup(
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(18.0, PLAYER_SIZE.y / 2.0, 10.0), // Start in the top-left base (Grid 4, 2)
+        Transform::from_translation(spawn_points.player),
     ));
 
     // AI Player
+    /*
     commands.spawn((
         AiPlayer,
         Player,
@@ -175,8 +191,9 @@ fn setup(
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.2, 0.2, 0.8))), // Blue AI
-        Transform::from_xyz(26.0, PLAYER_SIZE.y / 2.0, 10.0),      // Start near user (Grid 6, 2)
+        Transform::from_translation(spawn_points.ai),
     ));
+    */
 
     // Enemy
     commands.spawn((
@@ -193,7 +210,7 @@ fn setup(
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))), // Red Enemy
-        Transform::from_xyz(142.0, PLAYER_SIZE.y / 2.0, 10.0),     // Start far away (Grid 35, 2)
+        Transform::from_translation(spawn_points.enemy),
     ));
 
     // Light

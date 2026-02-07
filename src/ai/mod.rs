@@ -21,7 +21,8 @@ impl Plugin for AiPlugin {
                 rule_evaluation_system,
             ),
         );
-        app.init_resource::<AreaMap>();
+        // AreaMap is now initialized by ArenaPlugin
+        // app.init_resource::<AreaMap>();
     }
 }
 

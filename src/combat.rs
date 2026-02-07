@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
-use crate::GameState;
 use crate::user::User;
+use crate::GameState;
 
 pub struct CombatPlugin;
 

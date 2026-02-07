@@ -1,29 +1,43 @@
 use crate::building::{Structure, StructureType};
 use crate::pathfinding::NavGraph;
+use areas::{Area, AreaMap};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use rand::prelude::*;
 
 pub mod areas;
 
+pub struct ArenaDescription {
+    pub layout: String,
+    pub areas: Vec<Area>,
+    pub player_spawn: Vec3,
+    pub ai_spawn: Vec3,
+    pub enemy_spawn: Vec3,
+}
+
 pub struct ArenaPlugin {
-    layout: String,
+    description: ArenaDescription,
 }
 
 impl ArenaPlugin {
-    pub fn new(layout: &str) -> Self {
-        Self {
-            layout: layout.to_string(),
-        }
+    pub fn new(description: ArenaDescription) -> Self {
+        Self { description }
     }
 }
 
 #[derive(Resource)]
 struct ArenaMapLayout(String);
 
+#[derive(Resource)]
+pub struct SpawnPoints {
+    pub player: Vec3,
+    pub ai: Vec3,
+    pub enemy: Vec3,
+}
+
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
-        let lines: Vec<&str> = self.layout.trim().lines().collect();
+        let lines: Vec<&str> = self.description.layout.trim().lines().collect();
         let height = lines.len() as u32;
         let width = lines.first().map(|l| l.len()).unwrap_or(0) as u32;
 
@@ -32,12 +46,82 @@ impl Plugin for ArenaPlugin {
             height,
             tile_size: 4.0,
         })
-        .insert_resource(ArenaMapLayout(self.layout.clone()))
+        .insert_resource(ArenaMapLayout(self.description.layout.clone()))
+        .insert_resource(AreaMap::new(self.description.areas.clone()))
+        .insert_resource(SpawnPoints {
+            player: self.description.player_spawn,
+            ai: self.description.ai_spawn,
+            enemy: self.description.enemy_spawn,
+        })
         .init_resource::<ArenaGrid>()
         .init_resource::<NavGraph>()
         .add_systems(Startup, spawn_arena)
-        .add_systems(PostStartup, generate_nav_nodes);
+        .add_systems(
+            PostStartup,
+            (generate_nav_nodes, calculate_area_connectivity),
+        );
     }
+}
+
+pub fn calculate_area_connectivity(
+    mut area_map: ResMut<AreaMap>,
+    nav_graph: Res<NavGraph>,
+    config: Res<ArenaConfig>,
+    grid: Res<ArenaGrid>,
+) {
+    let areas = area_map.areas.clone();
+    let mut updates = Vec::new();
+
+    for (i, area_a) in areas.iter().enumerate() {
+        let mut neighbors = Vec::new();
+        let mut visible = Vec::new();
+
+        for (j, area_b) in areas.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+
+            // Connectivity Check (Pathfinding)
+            if let Some(_) = crate::pathfinding::find_path(area_a.center, area_b.center, &nav_graph)
+            {
+                // Simple check: if path exists, they are connected.
+                // In reality, we might want to check if they are *adjacent* or if the path is short.
+                // For now, let's assume if they are close enough (e.g. centers within 20 tiles) and reachable.
+                let dist = ((area_a.center.0 as i32 - area_b.center.0 as i32).pow(2)
+                    + (area_a.center.1 as i32 - area_b.center.1 as i32).pow(2))
+                .abs();
+
+                // This is a very rough heuristic. Ideally we check adjacency of boundaries.
+                // But for now, let's just say everything is a neighbor if reachable.
+                // Or better: check if we can raycast without hitting walls (Line of Sight)
+                neighbors.push(area_b.id.clone());
+            }
+
+            // Visibility Check (Line of Sight)
+            let start = Vec3::new(
+                area_a.center.0 as f32 * config.tile_size + config.tile_size * 0.5,
+                0.5,
+                area_a.center.1 as f32 * config.tile_size + config.tile_size * 0.5,
+            );
+            let end = Vec3::new(
+                area_b.center.0 as f32 * config.tile_size + config.tile_size * 0.5,
+                0.5,
+                area_b.center.1 as f32 * config.tile_size + config.tile_size * 0.5,
+            );
+
+            if crate::pathfinding::has_line_of_sight(start, end, &config, &grid) {
+                visible.push(area_b.id.clone());
+            }
+        }
+        updates.push((i, neighbors, visible));
+    }
+
+    for (index, neighbors, visible) in updates {
+        area_map.areas[index].neighbors = neighbors;
+        area_map.areas[index].visible_areas = visible;
+    }
+
+    info!("Area connectivity calculated.");
 }
 
 #[derive(Resource)]
