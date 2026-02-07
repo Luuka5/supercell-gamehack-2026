@@ -2,8 +2,7 @@ use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
 use crate::player::{
-    BuildType, Inventory, MainCamera, SelectedBuildType, Structure, StructureType, Turret,
-    TurretDirection,
+    Inventory, MainCamera, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
 };
 use crate::user::User;
 use bevy::prelude::*;
@@ -110,16 +109,17 @@ fn update_build_preview(
             };
 
             match selected.0 {
-                BuildType::Obstacle => {
+                StructureType::Obstacle => {
                     ghost_material.0 = materials.add(Color::srgba(0.6, 0.3, 0.3, 0.5));
                 }
-                BuildType::Turret => {
+                StructureType::Turret(_) => {
                     ghost_material.0 = materials.add(Color::srgba(0.0, 0.5, 1.0, 0.5));
                 }
+                StructureType::Wall => {}
             }
         } else {
             let (mesh, color) = match selected.0 {
-                BuildType::Obstacle => (
+                StructureType::Obstacle => (
                     meshes.add(Cuboid::new(
                         config.tile_size * 0.8,
                         6.4,
@@ -127,9 +127,13 @@ fn update_build_preview(
                     )),
                     Color::srgba(0.6, 0.3, 0.3, 0.5),
                 ),
-                BuildType::Turret => (
+                StructureType::Turret(_) => (
                     meshes.add(Cylinder::new(1.5, 3.0)),
                     Color::srgba(0.0, 0.5, 1.0, 0.5),
+                ),
+                StructureType::Wall => (
+                    meshes.add(Cuboid::new(config.tile_size, 8.0, config.tile_size)),
+                    Color::srgba(0.2, 0.2, 0.2, 1.0),
                 ),
             };
 
@@ -201,7 +205,7 @@ fn handle_build_input(
             }
 
             match selected.0 {
-                BuildType::Obstacle => {
+                StructureType::Obstacle => {
                     if inventory.obstacles == 0 {
                         info!("No obstacles left!");
                         return;
@@ -232,13 +236,12 @@ fn handle_build_input(
                     info!("Built obstacle at ({}, {})", tile_x, tile_y);
                     graph_dirty = true;
                 }
-                BuildType::Turret => {
+                StructureType::Turret(direction) => {
                     if inventory.turrets == 0 {
                         info!("No turrets left!");
                         return;
                     }
 
-                    let direction = TurretDirection::from_quat(player_transform.rotation);
                     let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
                     let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
                     let turret_entity = commands
@@ -246,7 +249,7 @@ fn handle_build_input(
                             Obstacle,
                             Structure {
                                 ty: StructureType::Turret(direction),
-                                collider_scale: 0.75,
+                                collider_scale: 0.5,
                             },
                             Turret {
                                 owner: player_entity,
@@ -266,6 +269,7 @@ fn handle_build_input(
                         tile_x, tile_y, direction
                     );
                 }
+                StructureType::Wall => {}
             }
         }
 

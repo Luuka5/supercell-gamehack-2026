@@ -1,5 +1,7 @@
 use crate::arena::Collectible;
-use crate::player::{BuildType, Inventory, MainCamera, MovementController, SelectedBuildType};
+use crate::player::{
+    Inventory, MainCamera, MovementController, SelectedBuildType, StructureType, TurretDirection,
+};
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -223,13 +225,13 @@ fn handle_build_type_selection(
     };
 
     if keyboard_input.just_pressed(KeyCode::Digit1) {
-        *selected = SelectedBuildType(BuildType::Obstacle);
+        *selected = SelectedBuildType(StructureType::Obstacle);
         info!("Selected: Obstacle (key 1)");
         return;
     }
 
     if keyboard_input.just_pressed(KeyCode::Digit2) {
-        *selected = SelectedBuildType(BuildType::Turret);
+        *selected = SelectedBuildType(StructureType::Turret(TurretDirection::North));
         info!("Selected: Turret (key 2)");
         return;
     }
@@ -237,10 +239,10 @@ fn handle_build_type_selection(
     for (interaction, text) in interaction_query.iter_mut() {
         if *interaction == Interaction::Pressed {
             if text.0.contains("Obstacle") {
-                *selected = SelectedBuildType(BuildType::Obstacle);
+                *selected = SelectedBuildType(StructureType::Obstacle);
                 info!("Selected: Obstacle");
             } else if text.0.contains("Turret") {
-                *selected = SelectedBuildType(BuildType::Turret);
+                *selected = SelectedBuildType(StructureType::Turret(TurretDirection::North));
                 info!("Selected: Turret");
             }
         }
@@ -281,10 +283,13 @@ fn update_hud_highlight(
 
     for mut bg in obstacle_btn_query.iter_mut() {
         match selected.0 {
-            BuildType::Obstacle => {
+            StructureType::Obstacle => {
                 *bg = BackgroundColor(Color::srgba(0.4, 0.3, 0.2, 1.0));
             }
-            BuildType::Turret => {
+            StructureType::Turret(_) => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
+            }
+            StructureType::Wall => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
             }
         }
@@ -292,11 +297,14 @@ fn update_hud_highlight(
 
     for mut bg in turret_btn_query.iter_mut() {
         match selected.0 {
-            BuildType::Obstacle => {
+            StructureType::Obstacle => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
             }
-            BuildType::Turret => {
+            StructureType::Turret(_) => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.3, 0.4, 1.0));
+            }
+            StructureType::Wall => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
             }
         }
     }

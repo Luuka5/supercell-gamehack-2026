@@ -11,15 +11,15 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
 use player::{
-    BuildType, Inventory, MainCamera, MovementController, Player, PlayerPlugin, PlayerStatus,
-    SelectedBuildType,
+    Inventory, MainCamera, MovementController, Player, PlayerPlugin, PlayerStatus,
+    SelectedBuildType, StructureType,
 };
 use user::{User, UserPlugin};
 
 // --- Game Constants ---
 // Note: These are also defined in player.rs for now.
 // Ideally, we should move them to a shared config resource.
-const PLAYER_SIZE: Vec3 = Vec3::new(1.0, 2.0, 1.0);
+const PLAYER_SIZE: Vec3 = Vec3::new(1.0, 3.0, 1.0);
 
 // . = Floor
 // X = Wall
@@ -109,7 +109,7 @@ fn setup(
             turrets: 3,
         },
         MovementController::default(),
-        SelectedBuildType(BuildType::Obstacle),
+        SelectedBuildType(StructureType::Obstacle),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
         Transform::from_xyz(16.0, PLAYER_SIZE.y / 2.0, 8.0), // Start in the top-left base (Grid 4, 2)

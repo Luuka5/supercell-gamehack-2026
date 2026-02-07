@@ -1,4 +1,5 @@
 use crate::pathfinding::NavGraph;
+use crate::player::{Structure, StructureType};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use rand::prelude::*;
@@ -127,6 +128,10 @@ fn spawn_arena(
                         .spawn((
                             Wall,
                             SightBlocking,
+                            Structure {
+                                ty: StructureType::Wall,
+                                collider_scale: 1.0,
+                            },
                             Mesh3d(wall_mesh.clone()),
                             MeshMaterial3d(wall_mat.clone()),
                             Transform::from_translation(position + Vec3::Y * (wall_height / 2.0)),

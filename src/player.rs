@@ -1,4 +1,4 @@
-use crate::arena::{ArenaConfig, ArenaGrid, Collectible, CollectibleType};
+use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::pathfinding::has_line_of_sight;
 use bevy::prelude::*;
 
@@ -27,15 +27,8 @@ pub struct Inventory {
     pub turrets: u32,
 }
 
-#[derive(Component, Default, Clone, Copy, PartialEq)]
-pub enum BuildType {
-    #[default]
-    Obstacle,
-    Turret,
-}
-
 #[derive(Component)]
-pub struct SelectedBuildType(pub BuildType);
+pub struct SelectedBuildType(pub StructureType);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TurretDirection {
@@ -97,9 +90,11 @@ pub struct Structure {
     pub collider_scale: f32,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
 pub enum StructureType {
+    #[default]
     Obstacle,
+    Wall,
     Turret(TurretDirection),
 }
 
@@ -114,6 +109,7 @@ impl Plugin for PlayerPlugin {
     }
 }
 
+const PLAYER_SIZE: f32 = 0.5;
 const PLAYER_SPEED: f32 = 20.0;
 
 fn update_player_visibility(
@@ -156,7 +152,7 @@ fn update_inventory(
         .iter()
         .map(|(e, t)| (e, t.translation))
         .collect();
-    let collectibles: Vec<(Entity, Vec3, CollectibleType)> = collectible_query
+    let collectibles: Vec<(Entity, Vec3, crate::arena::CollectibleType)> = collectible_query
         .iter()
         .map(|(e, t, c)| (e, t.translation, c.ty))
         .collect();
@@ -170,8 +166,8 @@ fn update_inventory(
             if player_pos.distance(*collectible_pos) < 2.0 {
                 collected_entities.push(*collectible_entity);
                 match ty {
-                    CollectibleType::Obstacle => collected_obstacles += 1,
-                    CollectibleType::Turret => collected_turrets += 1,
+                    crate::arena::CollectibleType::Obstacle => collected_obstacles += 1,
+                    crate::arena::CollectibleType::Turret => collected_turrets += 1,
                 }
             }
         }
@@ -191,6 +187,19 @@ fn update_inventory(
             }
         }
     }
+}
+
+fn boxes_overlap(
+    min1_x: f32,
+    min1_z: f32,
+    max1_x: f32,
+    max1_z: f32,
+    min2_x: f32,
+    min2_z: f32,
+    max2_x: f32,
+    max2_z: f32,
+) -> bool {
+    min1_x < max2_x && max1_x > min2_x && min1_z < max2_z && max1_z > min2_z
 }
 
 fn execute_movement(
@@ -213,55 +222,79 @@ fn execute_movement(
                 let move_dir = local_dir.normalize();
                 let speed = PLAYER_SPEED * time.delta_secs();
 
-                let current_tile_x = (transform.translation.x / config.tile_size).round() as i32;
-                let current_tile_y = (transform.translation.z / config.tile_size).round() as i32;
+                let current_x = transform.translation.x;
+                let current_z = transform.translation.z;
 
-                let next_x = transform.translation.x + move_dir.x * speed;
-                let next_y = transform.translation.z + move_dir.z * speed;
+                let player_half = PLAYER_SIZE * 0.5;
+                let tile_size = config.tile_size;
 
-                let next_tile_x = (next_x / config.tile_size).round() as i32;
-                let next_tile_y = (next_y / config.tile_size).round() as i32;
+                let next_x = current_x + move_dir.x * speed;
+                let next_z = current_z + move_dir.z * speed;
+
+                let player_box_x = (next_x - player_half, next_x + player_half);
+                let player_box_z = (current_z - player_half, current_z + player_half);
+
+                let player_box_z_only = (next_z - player_half, next_z + player_half);
+                let player_box_x_only = (current_x - player_half, current_x + player_half);
 
                 let mut can_move_x = true;
-                let mut can_move_y = true;
+                let mut can_move_z = true;
 
-                if let Some(&occupant_entity) = grid
-                    .occupants
-                    .get(&(next_tile_x as u32, current_tile_y as u32))
-                {
-                    if let Ok(structure) = structure_query.get(occupant_entity) {
-                        let tile_center_x = next_tile_x as f32 * config.tile_size;
-                        let tile_center_y = current_tile_y as f32 * config.tile_size;
-                        let collider_radius = structure.collider_scale * config.tile_size * 0.4;
+                for ((&key, &occupant_entity)) in grid.occupants.iter() {
+                    let (tx, tz) = key;
+                    let structure = if let Ok(s) = structure_query.get(occupant_entity) {
+                        s
+                    } else {
+                        continue;
+                    };
 
-                        if (next_x - tile_center_x).abs() > collider_radius {
-                            can_move_x = false;
-                        }
+                    let tile_half = tile_size * 0.5 * structure.collider_scale;
+                    let tile_center_x = tx as f32 * tile_size + tile_size * 0.5;
+                    let tile_center_z = tz as f32 * tile_size + tile_size * 0.5;
+
+                    let tile_min_x = tile_center_x - tile_half;
+                    let tile_max_x = tile_center_x + tile_half;
+                    let tile_min_z = tile_center_z - tile_half;
+                    let tile_max_z = tile_center_z + tile_half;
+
+                    if can_move_x
+                        && boxes_overlap(
+                            player_box_x.0,
+                            player_box_z.0,
+                            player_box_x.1,
+                            player_box_z.1,
+                            tile_min_x,
+                            tile_min_z,
+                            tile_max_x,
+                            tile_max_z,
+                        )
+                    {
+                        can_move_x = false;
                     }
-                }
 
-                if let Some(&occupant_entity) = grid
-                    .occupants
-                    .get(&(current_tile_x as u32, next_tile_y as u32))
-                {
-                    if let Ok(structure) = structure_query.get(occupant_entity) {
-                        let tile_center_x = current_tile_x as f32 * config.tile_size;
-                        let tile_center_y = next_tile_y as f32 * config.tile_size;
-                        let collider_radius = structure.collider_scale * config.tile_size * 0.4;
-
-                        if (next_y - tile_center_y).abs() > collider_radius {
-                            can_move_y = false;
-                        }
+                    if can_move_z
+                        && boxes_overlap(
+                            player_box_x_only.0,
+                            player_box_z_only.0,
+                            player_box_x_only.1,
+                            player_box_z_only.1,
+                            tile_min_x,
+                            tile_min_z,
+                            tile_max_x,
+                            tile_max_z,
+                        )
+                    {
+                        can_move_z = false;
                     }
                 }
 
                 let mut final_move = Vec3::ZERO;
 
-                if can_move_x && can_move_y {
+                if can_move_x && can_move_z {
                     final_move = move_dir * speed;
                 } else if can_move_x {
                     final_move = Vec3::new(move_dir.x * speed, 0.0, 0.0);
-                } else if can_move_y {
+                } else if can_move_z {
                     final_move = Vec3::new(0.0, 0.0, move_dir.z * speed);
                 }
 
