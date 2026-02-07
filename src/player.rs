@@ -37,6 +37,60 @@ pub enum BuildType {
 #[derive(Component)]
 pub struct SelectedBuildType(pub BuildType);
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum TurretDirection {
+    North,
+    East,
+    South,
+    West,
+}
+
+impl TurretDirection {
+    pub fn to_vec3(&self) -> Vec3 {
+        match self {
+            TurretDirection::North => Vec3::Z,
+            TurretDirection::East => Vec3::X,
+            TurretDirection::South => -Vec3::Z,
+            TurretDirection::West => -Vec3::X,
+        }
+    }
+
+    pub fn from_quat(rotation: Quat) -> Self {
+        let forward = rotation * Vec3::Z;
+        let abs_x = forward.x.abs();
+        let abs_z = forward.z.abs();
+
+        if abs_x > abs_z {
+            if forward.x > 0.0 {
+                TurretDirection::East
+            } else {
+                TurretDirection::West
+            }
+        } else {
+            if forward.z > 0.0 {
+                TurretDirection::North
+            } else {
+                TurretDirection::South
+            }
+        }
+    }
+
+    pub fn to_quat(&self) -> Quat {
+        match self {
+            TurretDirection::North => Quat::IDENTITY,
+            TurretDirection::East => Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2),
+            TurretDirection::South => Quat::from_rotation_y(std::f32::consts::PI),
+            TurretDirection::West => Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+        }
+    }
+}
+
+#[derive(Component)]
+pub struct Turret {
+    pub owner: Entity,
+    pub direction: TurretDirection,
+}
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {

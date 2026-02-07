@@ -1,7 +1,7 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
-use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType};
+use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType, Turret, TurretDirection};
 use crate::user::User;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -151,6 +151,7 @@ fn handle_build_input(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ai_query: Query<&mut TargetDestination, With<AiPlayer>>,
     selected_query: Query<&SelectedBuildType, With<User>>,
+    player_query: Query<(Entity, &Transform), With<User>>,
     mut inventory_query: Query<&mut Inventory, With<User>>,
 ) {
     if let Some((transform, visibility)) = ghost_query.iter().next() {
@@ -175,56 +176,74 @@ fn handle_build_input(
                 return;
             };
 
+            let (player_entity, player_transform) = if let Ok(p) = player_query.single() {
+                p
+            } else {
+                return;
+            };
+
+            let Ok(mut inventory) = inventory_query.single_mut() else {
+                return;
+            };
+
             match selected.0 {
                 BuildType::Obstacle => {
-                    if let Ok(mut inventory) = inventory_query.single_mut() {
-                        if inventory.obstacles == 0 {
-                            info!("No obstacles left!");
-                            return;
-                        }
-
-                        let obstacle_mesh = meshes.add(Cuboid::new(
-                            config.tile_size * 0.8,
-                            8.0 * 0.8,
-                            config.tile_size * 0.8,
-                        ));
-                        let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
-
-                        let obstacle_entity = commands
-                            .spawn((
-                                Obstacle,
-                                Mesh3d(obstacle_mesh),
-                                MeshMaterial3d(obstacle_mat),
-                                Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
-                            ))
-                            .id();
-
-                        grid.occupants.insert((tile_x, tile_y), obstacle_entity);
-                        inventory.obstacles -= 1;
-                        info!("Built obstacle at ({}, {})", tile_x, tile_y);
-                        graph_dirty = true;
+                    if inventory.obstacles == 0 {
+                        info!("No obstacles left!");
+                        return;
                     }
+
+                    let obstacle_mesh = meshes.add(Cuboid::new(
+                        config.tile_size * 0.8,
+                        8.0 * 0.8,
+                        config.tile_size * 0.8,
+                    ));
+                    let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
+
+                    let obstacle_entity = commands
+                        .spawn((
+                            Obstacle,
+                            Mesh3d(obstacle_mesh),
+                            MeshMaterial3d(obstacle_mat),
+                            Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
+                        ))
+                        .id();
+
+                    grid.occupants.insert((tile_x, tile_y), obstacle_entity);
+                    inventory.obstacles -= 1;
+                    info!("Built obstacle at ({}, {})", tile_x, tile_y);
+                    graph_dirty = true;
                 }
                 BuildType::Turret => {
-                    if let Ok(mut inventory) = inventory_query.single_mut() {
-                        if inventory.turrets == 0 {
-                            info!("No turrets left!");
-                            return;
-                        }
+                    if inventory.turrets == 0 {
+                        info!("No turrets left!");
+                        return;
+                    }
 
-                        let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
-                        let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
+                    let direction = TurretDirection::from_quat(player_transform.rotation);
+                    let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
+                    let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
 
-                        commands.spawn((
+                    let turret_entity = commands
+                        .spawn((
                             Obstacle,
+                            Turret {
+                                owner: player_entity,
+                                direction,
+                            },
                             Mesh3d(turret_mesh),
                             MeshMaterial3d(turret_mat),
-                            Transform::from_translation(pos + Vec3::Y * 1.5),
-                        ));
+                            Transform::from_translation(pos + Vec3::Y * 1.5)
+                                .with_rotation(direction.to_quat()),
+                        ))
+                        .id();
 
-                        inventory.turrets -= 1;
-                        info!("Built turret at ({}, {})", tile_x, tile_y);
-                    }
+                    grid.occupants.insert((tile_x, tile_y), turret_entity);
+                    inventory.turrets -= 1;
+                    info!(
+                        "Built turret at ({}, {}) facing {:?}",
+                        tile_x, tile_y, direction
+                    );
                 }
             }
         }
@@ -234,7 +253,7 @@ fn handle_build_input(
             if let Some(&occupant_entity) = grid.occupants.get(&(tile_x, tile_y)) {
                 commands.entity(occupant_entity).despawn();
                 grid.occupants.remove(&(tile_x, tile_y));
-                info!("Destroyed obstacle at ({}, {})", tile_x, tile_y);
+                info!("Destroyed structure at ({}, {})", tile_x, tile_y);
                 graph_dirty = true;
             } else {
                 info!("Nothing to destroy at ({}, {})", tile_x, tile_y);
