@@ -6,7 +6,7 @@ mod pathfinding;
 mod player;
 mod user;
 
-use ai::{AiPlayer, AiPlugin, PathFollower, TargetDestination};
+use ai::{AiPlayer, AiPlugin, AiRuleSet, PathFollower, TargetDestination};
 use arena::{ArenaConfig, ArenaPlugin};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
@@ -171,6 +171,7 @@ fn setup(
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 35, y: 25 }, // Go to bottom right (Valid Y)
+        AiRuleSet(ai::rules::RuleSet::default()),
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.2, 0.2, 0.8))), // Blue AI
@@ -188,6 +189,7 @@ fn setup(
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 4, y: 2 }, // Go to User's start (Grid 4, 2)
+        AiRuleSet(ai::rules::RuleSet::default()),
         Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))), // Red Enemy

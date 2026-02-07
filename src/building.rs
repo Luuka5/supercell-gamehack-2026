@@ -7,13 +7,15 @@ use crate::user::{MainCamera, SelectedBuildType, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Component)]
 pub struct Structure {
     pub ty: StructureType,
     pub collider_scale: f32,
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Debug)]
+#[derive(Default, Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum StructureType {
     #[default]
     Obstacle,

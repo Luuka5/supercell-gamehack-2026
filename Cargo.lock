@@ -330,6 +330,7 @@ dependencies = [
  "bevy",
  "getrandom",
  "rand",
+ "serde",
 ]
 
 [[package]]

@@ -1,3 +1,4 @@
+use crate::arena::areas::{AreaID, AreaMap};
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::building::Structure;
 use crate::pathfinding::has_line_of_sight;
@@ -22,6 +23,9 @@ pub struct MovementController {
 #[derive(Component, Default)]
 pub struct PlayerStatus {
     pub visible_players: Vec<Entity>,
+    pub nearest_enemy_position: Option<Vec3>,
+    pub nearest_enemy_dist: f32,
+    pub current_area_id: Option<AreaID>,
 }
 
 #[derive(Component, Default)]
@@ -46,6 +50,7 @@ fn update_player_visibility(
     player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
+    area_map: Option<Res<AreaMap>>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
@@ -54,6 +59,8 @@ fn update_player_visibility(
 
     for (entity, pos) in &players {
         let mut visible = Vec::new();
+        let mut nearest_enemy_pos = None;
+        let mut nearest_dist = f32::MAX;
 
         for (other_entity, other_pos) in &players {
             if *entity == *other_entity {
@@ -62,11 +69,27 @@ fn update_player_visibility(
 
             if has_line_of_sight(*pos, *other_pos, &config, &grid) {
                 visible.push(*other_entity);
+                let dist = pos.distance(*other_pos);
+                if dist < nearest_dist {
+                    nearest_dist = dist;
+                    nearest_enemy_pos = Some(*other_pos);
+                }
             }
         }
 
+        let current_area = if let Some(map) = &area_map {
+            let tile_x = ((pos.x - config.tile_size * 0.5) / config.tile_size).floor() as u32;
+            let tile_y = ((pos.z - config.tile_size * 0.5) / config.tile_size).floor() as u32;
+            Some(map.get_area_id(tile_x, tile_y))
+        } else {
+            None
+        };
+
         commands.entity(*entity).insert(PlayerStatus {
             visible_players: visible,
+            nearest_enemy_position: nearest_enemy_pos,
+            nearest_enemy_dist: nearest_dist,
+            current_area_id: current_area,
         });
     }
 }

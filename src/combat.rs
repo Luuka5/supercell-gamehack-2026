@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
-use crate::user::User;
 use crate::GameState;
+use crate::user::User;
 
 pub struct CombatPlugin;
 
@@ -34,7 +34,9 @@ impl Hp {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum TurretDirection {
     North,
     East,

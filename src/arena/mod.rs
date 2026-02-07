@@ -4,6 +4,8 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use rand::prelude::*;
 
+pub mod areas;
+
 pub struct ArenaPlugin {
     layout: String,
 }
