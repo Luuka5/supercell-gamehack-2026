@@ -331,34 +331,5 @@ pub fn generate_nav_nodes(
 }
 
 pub fn regenerate_nav_graph(config: &ArenaConfig, grid: &ArenaGrid, nav_graph: &mut NavGraph) {
-    nav_graph.nodes.clear();
-    let directions = [(0, 1), (0, -1), (1, 0), (-1, 0)];
-
-    for ((x, y), _) in &grid.tiles {
-        if grid.occupants.contains_key(&(*x, *y)) {
-            continue;
-        }
-
-        let mut graph_neighbors = Vec::new();
-
-        for (dx, dy) in directions {
-            let nx = *x as i32 + dx;
-            let ny = *y as i32 + dy;
-
-            if nx >= 0 && nx < config.width as i32 && ny >= 0 && ny < config.height as i32 {
-                let nx = nx as u32;
-                let ny = ny as u32;
-
-                if !grid.occupants.contains_key(&(nx, ny)) {
-                    if let Some(&_neighbor_entity) = grid.tiles.get(&(nx, ny)) {
-                        graph_neighbors.push((nx, ny));
-                    }
-                }
-            }
-        }
-
-        nav_graph.nodes.insert((*x, *y), graph_neighbors);
-    }
-
-    info!("NavGraph generated with {} nodes.", nav_graph.nodes.len());
+    crate::pathfinding::regenerate_nav_graph(config, grid, nav_graph);
 }

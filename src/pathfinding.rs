@@ -1,3 +1,4 @@
+use crate::arena::{ArenaConfig, ArenaGrid};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use std::cmp::Ordering;
@@ -30,6 +31,73 @@ impl PartialOrd for State {
     }
 }
 
+pub fn regenerate_nav_graph(config: &ArenaConfig, grid: &ArenaGrid, nav_graph: &mut NavGraph) {
+    nav_graph.nodes.clear();
+    // Include diagonals: (dx, dy, cost_multiplier)
+    // Cardinal: 1.0, Diagonal: 1.414 (sqrt(2))
+    // We'll store neighbors as just coordinates for now, but we need to handle cost in find_path.
+    // Wait, NavGraph currently stores Vec<(u32, u32)>. It doesn't store edge weights.
+    // We need to update NavGraph to store weights or calculate them on the fly.
+    // Let's update find_path to calculate distance based on coordinates.
+
+    let directions = [
+        (0, 1),
+        (0, -1),
+        (1, 0),
+        (-1, 0), // Cardinal
+        (1, 1),
+        (1, -1),
+        (-1, 1),
+        (-1, -1), // Diagonal
+    ];
+
+    for ((x, y), _) in &grid.tiles {
+        if grid.occupants.contains_key(&(*x, *y)) {
+            continue;
+        }
+
+        let mut graph_neighbors = Vec::new();
+
+        for (dx, dy) in directions {
+            let nx = *x as i32 + dx;
+            let ny = *y as i32 + dy;
+
+            if nx >= 0 && nx < config.width as i32 && ny >= 0 && ny < config.height as i32 {
+                let nx = nx as u32;
+                let ny = ny as u32;
+
+                if !grid.occupants.contains_key(&(nx, ny)) {
+                    // For diagonals, check if we are cutting a corner.
+                    // If moving (1, 1), check (1, 0) and (0, 1). If both are blocked, we can't move.
+                    // If one is blocked, it's usually okay in games, but strictly speaking might clip.
+                    // Let's prevent corner cutting if BOTH adjacent cardinals are blocked?
+                    // Or even if ONE is blocked (strict).
+                    // Let's go with strict: if either cardinal neighbor is blocked, diagonal is blocked.
+
+                    let mut blocked = false;
+                    if dx.abs() == 1 && dy.abs() == 1 {
+                        if grid.occupants.contains_key(&(*x, ny))
+                            || grid.occupants.contains_key(&(nx, *y))
+                        {
+                            blocked = true;
+                        }
+                    }
+
+                    if !blocked {
+                        if let Some(&_neighbor_entity) = grid.tiles.get(&(nx, ny)) {
+                            graph_neighbors.push((nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+
+        nav_graph.nodes.insert((*x, *y), graph_neighbors);
+    }
+
+    info!("NavGraph generated with {} nodes.", nav_graph.nodes.len());
+}
+
 pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Option<Vec<(u32, u32)>> {
     let mut dist: HashMap<(u32, u32), u32> = HashMap::default();
     let mut heap = BinaryHeap::new();
@@ -47,7 +115,7 @@ pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Optio
         visited_count += 1;
 
         if position == goal {
-            info!("Path found! Visited {} nodes.", visited_count);
+            // info!("Path found! Visited {} nodes.", visited_count);
             let mut path = Vec::new();
             let mut current = goal;
             while current != start {
@@ -66,14 +134,23 @@ pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Optio
         if let Some(neighbors) = graph.nodes.get(&position) {
             for &neighbor in neighbors {
                 let current_g = *dist.get(&position).unwrap();
-                let new_cost = current_g + 1;
+
+                // Calculate cost based on distance (10 for cardinal, 14 for diagonal)
+                let dx = (neighbor.0 as i32 - position.0 as i32).abs();
+                let dy = (neighbor.1 as i32 - position.1 as i32).abs();
+                let step_cost = if dx + dy == 2 { 14 } else { 10 };
+
+                let new_cost = current_g + step_cost;
 
                 let neighbor_dist = *dist.get(&neighbor).unwrap_or(&u32::MAX);
 
                 if new_cost < neighbor_dist {
                     dist.insert(neighbor, new_cost);
-                    let h = (neighbor.0 as i32 - goal.0 as i32).abs() as u32
-                        + (neighbor.1 as i32 - goal.1 as i32).abs() as u32;
+                    // Heuristic: Euclidean distance * 10 (to match scale)
+                    let h_dx = (neighbor.0 as i32 - goal.0 as i32).abs() as f32;
+                    let h_dy = (neighbor.1 as i32 - goal.1 as i32).abs() as f32;
+                    let h = ((h_dx * h_dx + h_dy * h_dy).sqrt() * 10.0) as u32;
+
                     heap.push(State {
                         cost: new_cost + h,
                         position: neighbor,
@@ -82,15 +159,17 @@ pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Optio
                 }
             }
         } else {
-            warn!("Node {:?} has no entry in graph!", position);
+            // warn!("Node {:?} has no entry in graph!", position);
         }
     }
 
+    /*
     info!(
         "Pathfinding failed. Visited {} nodes. Graph size: {}",
         visited_count,
         graph.nodes.len()
     );
+    */
     None
 }
 
