@@ -11,10 +11,10 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
 use player::{
-    Inventory, MainCamera, MovementController, Player, PlayerPlugin, PlayerStatus,
-    SelectedBuildType, StructureType,
+    Inventory, MovementController, Player, PlayerPlugin, PlayerStatus, SelectedBuildType,
+    StructureType,
 };
-use user::{User, UserPlugin};
+use user::{MainCamera, User, UserPlugin};
 
 // --- Game Constants ---
 // Note: These are also defined in player.rs for now.

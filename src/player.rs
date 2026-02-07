@@ -6,7 +6,7 @@ pub const PLAYER_SPEED: f32 = 20.0;
 pub const ACCELERATION: f32 = 10.0;
 pub const DECELERATION: f32 = 30.0;
 
-const PLAYER_SIZE: f32 = 0.7;
+const PLAYER_SIZE: f32 = 1.0;
 
 #[derive(Component)]
 pub struct Player;
@@ -16,11 +16,6 @@ pub struct MovementController {
     pub input_direction: Vec3,
     pub rotation_delta: f32,
     pub current_velocity: Vec3,
-}
-
-#[derive(Component)]
-pub struct MainCamera {
-    pub pitch: f32,
 }
 
 #[derive(Component, Default)]

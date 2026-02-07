@@ -1,10 +1,8 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
 use crate::pathfinding::NavGraph;
-use crate::player::{
-    Inventory, MainCamera, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
-};
-use crate::user::User;
+use crate::player::{Inventory, SelectedBuildType, Structure, StructureType, Turret};
+use crate::user::{MainCamera, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -18,9 +16,6 @@ impl Plugin for BuildingPlugin {
 
 // Constants
 const BUILD_MAX_DISTANCE: f32 = 15.0;
-
-#[derive(Component)]
-pub struct Builder;
 
 #[derive(Component)]
 pub struct BuildGhost;

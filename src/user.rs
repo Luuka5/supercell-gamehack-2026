@@ -1,15 +1,16 @@
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::player::{
-    Inventory, MainCamera, MovementController, SelectedBuildType, Structure, StructureType,
-    TurretDirection,
+    Inventory, MovementController, SelectedBuildType, Structure, StructureType, TurretDirection,
 };
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 const CAMERA_DISTANCE: f32 = 6.0;
-const CAMERA_HEIGHT_OFFSET: f32 = 2.0;
+const CAMERA_HEIGHT_OFFSET: f32 = 2.5;
+const CAMERA_ROTATING_HEIGHT_OFFSET: f32 = 0.;
 const CAMERA_MIN_DISTANCE: f32 = 1.5;
+const CAMERA_DISTANCE_MARGIN: f32 = 0.1;
 
 #[derive(Component)]
 pub struct User;
@@ -28,6 +29,11 @@ struct ObstacleCountText;
 
 #[derive(Component)]
 struct TurretCountText;
+
+#[derive(Component)]
+pub struct MainCamera {
+    pub pitch: f32,
+}
 
 pub struct UserPlugin;
 
@@ -363,12 +369,13 @@ fn camera_follow(
                 camera_dir,
                 CAMERA_DISTANCE,
                 CAMERA_MIN_DISTANCE,
+                CAMERA_DISTANCE_MARGIN,
                 &config,
                 &grid,
                 &structure_query,
             );
 
-            let offset = rotation * Vec3::Z * desired_distance;
+            let offset = rotation * (Vec3::Z * desired_distance + CAMERA_ROTATING_HEIGHT_OFFSET);
 
             camera_transform.translation = look_target + offset;
             camera_transform.look_at(look_target, Vec3::Y);
@@ -381,6 +388,7 @@ fn get_collision_adjusted_distance(
     direction: Vec3,
     max_distance: f32,
     min_distance: f32,
+    distance_margin: f32,
     config: &ArenaConfig,
     grid: &ArenaGrid,
     structure_query: &Query<&Structure>,
@@ -402,7 +410,7 @@ fn get_collision_adjusted_distance(
 
         if let Some(distance) = ray_aabb_intersection(origin, direction, min, max) {
             if distance < closest_hit && distance > min_distance {
-                closest_hit = distance;
+                closest_hit = distance - distance_margin;
             }
         }
     }
@@ -443,9 +451,5 @@ fn ray_aabb_intersection(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) ->
         return None;
     }
 
-    if tmin < 0.0 {
-        Some(tmax)
-    } else {
-        Some(tmin)
-    }
+    if tmin < 0.0 { Some(tmax) } else { Some(tmin) }
 }
