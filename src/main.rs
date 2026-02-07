@@ -11,8 +11,8 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
 use player::{
-    Inventory, MovementController, Player, PlayerPlugin, PlayerStatus, SelectedBuildType,
-    StructureType,
+    Hp, Inventory, MovementController, Player, PlayerPlugin, PlayerStatus, SelectedBuildType,
+    Structure, StructureType, Turret, TurretDirection,
 };
 use user::{MainCamera, User, UserPlugin};
 
@@ -76,16 +76,6 @@ fn debug_log_positions(
     *timer += time.delta_secs();
     if *timer > 2.0 {
         *timer = 0.0;
-        for (entity, transform) in query.iter() {
-            let tile_x = ((transform.translation.x - config.tile_size * 0.5) / config.tile_size)
-                .floor() as i32;
-            let tile_z = ((transform.translation.z - config.tile_size * 0.5) / config.tile_size)
-                .floor() as i32;
-            info!(
-                "Entity {:?} at {} (Tile {}, {})",
-                entity, transform.translation, tile_x, tile_z
-            );
-        }
     }
 }
 
@@ -155,6 +145,7 @@ fn setup(
         },
         MovementController::default(),
         SelectedBuildType(StructureType::Obstacle),
+        Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
         Transform::from_xyz(18.0, PLAYER_SIZE.y / 2.0, 10.0), // Start in the top-left base (Grid 4, 2)
@@ -170,6 +161,7 @@ fn setup(
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 35, y: 25 }, // Go to bottom right (Valid Y)
+        Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.2, 0.2, 0.8))), // Blue AI
         Transform::from_xyz(26.0, PLAYER_SIZE.y / 2.0, 10.0),      // Start near user (Grid 6, 2)
@@ -186,6 +178,7 @@ fn setup(
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 4, y: 2 }, // Go to User's start (Grid 4, 2)
+        Hp::new(3),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))), // Red Enemy
         Transform::from_xyz(142.0, PLAYER_SIZE.y / 2.0, 10.0),     // Start far away (Grid 35, 2)

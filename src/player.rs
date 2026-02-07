@@ -6,6 +6,10 @@ pub const PLAYER_SPEED: f32 = 20.0;
 pub const ACCELERATION: f32 = 10.0;
 pub const DECELERATION: f32 = 30.0;
 
+pub const MAX_HP: u32 = 3;
+pub const TURRET_COOLDOWN: f32 = 4.0;
+pub const TURRET_DAMAGE: u32 = 1;
+
 const PLAYER_SIZE: f32 = 1.0;
 
 #[derive(Component)]
@@ -31,6 +35,26 @@ pub struct Inventory {
 
 #[derive(Component)]
 pub struct SelectedBuildType(pub StructureType);
+
+#[derive(Component)]
+pub struct Hp {
+    pub current: u32,
+    pub max: u32,
+}
+
+impl Hp {
+    pub fn new(max: u32) -> Self {
+        Self { current: max, max }
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.current > 0
+    }
+
+    pub fn take_damage(&mut self, amount: u32) {
+        self.current = self.current.saturating_sub(amount);
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TurretDirection {
@@ -84,6 +108,17 @@ impl TurretDirection {
 pub struct Turret {
     pub owner: Entity,
     pub direction: TurretDirection,
+    pub last_shot: f32,
+}
+
+impl Turret {
+    pub fn is_active(&self, current_time: f32) -> bool {
+        current_time - self.last_shot >= TURRET_COOLDOWN
+    }
+
+    pub fn shot(&mut self, current_time: f32) {
+        self.last_shot = current_time;
+    }
 }
 
 #[derive(Component)]
@@ -100,13 +135,21 @@ pub enum StructureType {
     Turret(TurretDirection),
 }
 
+#[derive(Component)]
+pub struct Enemy;
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (execute_movement, update_player_visibility, update_inventory),
+            (
+                execute_movement,
+                update_player_visibility,
+                update_inventory,
+                turret_shooting_system,
+            ),
         );
     }
 }
@@ -335,6 +378,74 @@ fn execute_movement(
                 transform.translation.x += final_dx;
                 transform.translation.z += final_dz;
             }
+        }
+    }
+}
+
+fn turret_shooting_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    turret_query: Query<(Entity, &Transform, &Turret), Without<Enemy>>,
+    mut enemy_query: Query<(Entity, &Transform, &mut Hp), With<Enemy>>,
+) {
+    let current_time = time.elapsed_secs();
+
+    for (turret_entity, turret_transform, turret) in turret_query.iter() {
+        if !turret.is_active(current_time) {
+            continue;
+        }
+
+        let turret_pos = turret_transform.translation;
+        let direction_vec = turret.direction.to_vec3();
+
+        let mut closest_enemy: Option<Entity> = None;
+        let mut closest_distance = f32::MAX;
+
+        for (enemy_entity, enemy_transform, _) in enemy_query.iter() {
+            let enemy_pos = enemy_transform.translation;
+            let to_enemy = enemy_pos - turret_pos;
+            let distance = to_enemy.length();
+
+            if distance < 15.0 {
+                let enemy_dir = to_enemy.normalize();
+                let dot = enemy_dir.dot(direction_vec);
+
+                if dot > 0.95 {
+                    if distance < closest_distance {
+                        closest_distance = distance;
+                        closest_enemy = Some(enemy_entity);
+                    }
+                }
+            }
+        }
+
+        if let Some(enemy_entity) = closest_enemy {
+            commands.entity(turret_entity).insert(Turret {
+                owner: turret.owner,
+                direction: turret.direction,
+                last_shot: current_time,
+            });
+
+            if let Ok((enemy_entity, enemy_transform, mut hp)) = enemy_query.get_mut(enemy_entity) {
+                let old_hp = hp.current;
+                hp.take_damage(TURRET_DAMAGE);
+                if hp.is_alive() {
+                    info!(
+                        "Turret hit {:?}! HP: {}/{}",
+                        enemy_entity, hp.current, hp.max
+                    );
+                } else {
+                    info!("{:?} destroyed! Final HP: 0/{}", enemy_entity, hp.max);
+                }
+            }
+
+            commands.spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.2, 0.2, 0.2))),
+                MeshMaterial3d(materials.add(Color::srgb(1.0, 1.0, 0.0))),
+                Transform::from_translation(turret_pos + Vec3::Y * 2.0),
+            ));
         }
     }
 }

@@ -7,8 +7,8 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
 const CAMERA_DISTANCE: f32 = 6.0;
-const CAMERA_HEIGHT_OFFSET: f32 = 2.5;
-const CAMERA_ROTATING_HEIGHT_OFFSET: f32 = 0.;
+const CAMERA_HEIGHT_OFFSET: f32 = 1.;
+const CAMERA_ROTATING_HEIGHT_OFFSET: f32 = 0.5;
 const CAMERA_MIN_DISTANCE: f32 = 1.5;
 const CAMERA_DISTANCE_MARGIN: f32 = 0.1;
 
@@ -28,7 +28,13 @@ struct TurretButton;
 struct ObstacleCountText;
 
 #[derive(Component)]
-struct TurretCountText;
+pub struct TurretCountText;
+
+#[derive(Component)]
+pub struct HpBarBackground;
+
+#[derive(Component)]
+pub struct HpBarFill;
 
 #[derive(Component)]
 pub struct MainCamera {
@@ -47,6 +53,7 @@ impl Plugin for UserPlugin {
                 handle_build_type_selection,
                 update_hud_counts,
                 update_hud_highlight,
+                update_hp_bar,
             ),
         )
         .add_systems(Startup, setup_hud);
@@ -212,6 +219,40 @@ fn setup_hud(mut commands: Commands) {
         TextColor(Color::WHITE),
         TurretCountText,
         ChildOf(turret_btn),
+    ));
+
+    commands.spawn((
+        HudContainer,
+        Text::new("HP:"),
+        TextFont::from_font_size(18.0),
+        TextColor(Color::WHITE),
+        ChildOf(panel),
+    ));
+
+    let hp_bar_bg = commands
+        .spawn((
+            HudContainer,
+            Node {
+                width: Val::Px(200.0),
+                height: Val::Px(20.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 1.0)),
+            BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 1.0)),
+            ChildOf(panel),
+        ))
+        .id();
+
+    commands.spawn((
+        HudContainer,
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.0, 0.8, 0.2)),
+        HpBarFill,
+        ChildOf(hp_bar_bg),
     ));
 }
 
@@ -451,5 +492,21 @@ fn ray_aabb_intersection(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) ->
         return None;
     }
 
-    if tmin < 0.0 { Some(tmax) } else { Some(tmin) }
+    if tmin < 0.0 {
+        Some(tmax)
+    } else {
+        Some(tmin)
+    }
+}
+
+fn update_hp_bar(
+    mut hp_bar_query: Query<&mut Node, With<HpBarFill>>,
+    player_query: Query<&crate::player::Hp, With<User>>,
+) {
+    if let Ok(hp) = player_query.single() {
+        for mut node in hp_bar_query.iter_mut() {
+            let percentage = hp.current as f32 / hp.max as f32;
+            node.width = Val::Percent(percentage * 100.0);
+        }
+    }
 }

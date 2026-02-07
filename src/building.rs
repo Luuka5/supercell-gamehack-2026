@@ -1,7 +1,9 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
 use crate::pathfinding::NavGraph;
-use crate::player::{Inventory, SelectedBuildType, Structure, StructureType, Turret};
+use crate::player::{
+    Inventory, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
+};
 use crate::user::{MainCamera, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -147,6 +149,7 @@ fn handle_build_input(
     mouse_btn: Res<ButtonInput<MouseButton>>,
     ghost_query: Query<(&Transform, &Visibility), With<BuildGhost>>,
     config: Res<ArenaConfig>,
+    time: Res<Time>,
     mut grid: ResMut<ArenaGrid>,
     mut nav_graph: ResMut<NavGraph>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -243,6 +246,7 @@ fn handle_build_input(
 
                     let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
                     let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
+                    let current_time = time.elapsed_secs();
                     let turret_entity = commands
                         .spawn((
                             Obstacle,
@@ -253,6 +257,7 @@ fn handle_build_input(
                             Turret {
                                 owner: player_entity,
                                 direction,
+                                last_shot: time.elapsed_secs(),
                             },
                             Mesh3d(turret_mesh),
                             MeshMaterial3d(turret_mat),
