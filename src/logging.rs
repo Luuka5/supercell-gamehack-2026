@@ -61,26 +61,12 @@ impl MatchLog {
     pub fn add(&mut self, event: GameEvent) {
         self.events.push(event);
     }
-
-    pub fn write_to_file(&self, filename: &str) {
-        let json = serde_json::to_string_pretty(&self.events).unwrap();
-        std::fs::write(filename, json).unwrap();
-    }
 }
 
 pub struct LoggingPlugin;
 
 impl Plugin for LoggingPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MatchLog>()
-            .add_systems(Update, write_logs_periodically);
-    }
-}
-
-fn write_logs_periodically(mut timer: Local<f32>, time: Res<Time>, match_log: Res<MatchLog>) {
-    *timer += time.delta_secs();
-    if *timer > 10.0 {
-        *timer = 0.0;
-        match_log.write_to_file("game_logs.json");
+        app.init_resource::<MatchLog>();
     }
 }
