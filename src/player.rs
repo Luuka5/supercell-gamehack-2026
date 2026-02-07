@@ -4,6 +4,16 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
+#[derive(Component, Default, Clone, Copy, PartialEq)]
+pub enum BuildType {
+    #[default]
+    Obstacle,
+    Turret,
+}
+
+#[derive(Component)]
+pub struct SelectedBuildType(pub BuildType);
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -16,8 +26,12 @@ impl Plugin for PlayerPlugin {
                 camera_follow,
                 update_player_visibility,
                 update_inventory,
+                handle_build_type_selection,
+                update_hud_counts,
+                update_hud_highlight,
             ),
-        );
+        )
+        .add_systems(Startup, setup_hud);
     }
 }
 
@@ -57,7 +71,7 @@ const PLAYER_SPEED: f32 = 20.0;
 
 fn update_player_visibility(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform), With<Player>>,
+    player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
 ) {
@@ -88,9 +102,9 @@ fn update_player_visibility(
 
 fn update_inventory(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform), With<Player>>,
-    mut inventory_query: Query<&mut Inventory>,
-    collectible_query: Query<(Entity, &Transform, &Collectible), With<Collectible>>,
+    player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
+    mut inventory_query: Query<&mut Inventory, With<Player>>,
+    collectible_query: Query<(Entity, &Transform, &Collectible), Without<Player>>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
@@ -102,12 +116,13 @@ fn update_inventory(
         .collect();
 
     for (player_entity, player_pos) in &players {
+        let mut collected_entities = Vec::new();
         let mut collected_obstacles = 0;
         let mut collected_turrets = 0;
 
         for (collectible_entity, collectible_pos, ty) in &collectibles {
             if player_pos.distance(*collectible_pos) < 2.0 {
-                commands.entity(*collectible_entity).despawn();
+                collected_entities.push(*collectible_entity);
                 match ty {
                     CollectibleType::Obstacle => collected_obstacles += 1,
                     CollectibleType::Turret => collected_turrets += 1,
@@ -115,7 +130,11 @@ fn update_inventory(
             }
         }
 
-        if collected_obstacles > 0 || collected_turrets > 0 {
+        if !collected_entities.is_empty() {
+            for entity in collected_entities {
+                commands.entity(entity).despawn();
+            }
+
             if let Ok(mut inventory) = inventory_query.get_mut(*player_entity) {
                 inventory.obstacles += collected_obstacles;
                 inventory.turrets += collected_turrets;
@@ -131,8 +150,8 @@ fn update_inventory(
 fn handle_user_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     accumulated_mouse_motion: Res<AccumulatedMouseMotion>,
-    mut query: Query<&mut MovementController, With<User>>,
-    mut camera_query: Query<&mut MainCamera>,
+    mut query: Query<&mut MovementController, (With<User>, Without<Collectible>)>,
+    mut camera_query: Query<&mut MainCamera, Without<Collectible>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
 ) {
     let delta = accumulated_mouse_motion.delta;
@@ -177,7 +196,7 @@ fn handle_user_input(
 
 fn execute_movement(
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &MovementController), With<Player>>,
+    mut query: Query<(&mut Transform, &MovementController), (With<Player>, Without<Collectible>)>,
 ) {
     for (mut transform, controller) in query.iter_mut() {
         if controller.rotation_delta != 0.0 {
@@ -197,8 +216,8 @@ fn execute_movement(
 }
 
 fn camera_follow(
-    player_query: Query<&Transform, With<User>>,
-    mut camera_query: Query<(&mut Transform, &MainCamera), Without<User>>,
+    player_query: Query<&Transform, (With<User>, Without<Collectible>)>,
+    mut camera_query: Query<(&mut Transform, &MainCamera), (Without<User>, Without<Collectible>)>,
 ) {
     if let Some(player_transform) = player_query.iter().next() {
         if let Some((mut camera_transform, camera)) = camera_query.iter_mut().next() {
@@ -211,6 +230,231 @@ fn camera_follow(
 
             camera_transform.translation = look_target + offset;
             camera_transform.look_at(look_target, Vec3::Y);
+        }
+    }
+}
+
+#[derive(Component)]
+struct HudContainer;
+
+#[derive(Component)]
+struct ObstacleButton;
+
+#[derive(Component)]
+struct TurretButton;
+
+#[derive(Component)]
+struct ObstacleCountText;
+
+#[derive(Component)]
+struct TurretCountText;
+
+fn setup_hud(mut commands: Commands) {
+    let container = commands
+        .spawn((
+            HudContainer,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+        ))
+        .id();
+
+    let panel = commands
+        .spawn((
+            HudContainer,
+            Node {
+                width: Val::Px(220.0),
+                height: Val::Px(140.0),
+                left: Val::Px(20.0),
+                top: Val::Px(20.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.1, 0.1, 0.1, 0.8)),
+            BorderColor::all(Color::srgba(0.5, 0.5, 0.5, 1.0)),
+            ChildOf(container),
+        ))
+        .id();
+
+    commands.spawn((
+        HudContainer,
+        Text::new("BUILD SELECTION"),
+        TextFont::from_font_size(18.0),
+        TextColor(Color::WHITE),
+        ChildOf(panel),
+    ));
+
+    let obstacle_btn = commands
+        .spawn((
+            HudContainer,
+            Node {
+                width: Val::Px(200.0),
+                height: Val::Px(30.0),
+                display: Display::Flex,
+                column_gap: Val::Px(10.0),
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                padding: UiRect::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0)),
+            BorderColor::all(Color::srgba(0.4, 0.4, 0.4, 1.0)),
+            Interaction::None,
+            ObstacleButton,
+            ChildOf(panel),
+        ))
+        .id();
+
+    commands.spawn((
+        Text::new("Obstacle"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        ChildOf(obstacle_btn),
+    ));
+
+    commands.spawn((
+        Text::new("x0"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        ObstacleCountText,
+        ChildOf(obstacle_btn),
+    ));
+
+    let turret_btn = commands
+        .spawn((
+            HudContainer,
+            Node {
+                width: Val::Px(200.0),
+                height: Val::Px(30.0),
+                display: Display::Flex,
+                column_gap: Val::Px(10.0),
+                align_items: AlignItems::Center,
+                border: UiRect::all(Val::Px(1.0)),
+                padding: UiRect::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0)),
+            BorderColor::all(Color::srgba(0.4, 0.4, 0.4, 1.0)),
+            Interaction::None,
+            TurretButton,
+            ChildOf(panel),
+        ))
+        .id();
+
+    commands.spawn((
+        Text::new("Turret"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        ChildOf(turret_btn),
+    ));
+
+    commands.spawn((
+        Text::new("x0"),
+        TextFont::from_font_size(16.0),
+        TextColor(Color::WHITE),
+        TurretCountText,
+        ChildOf(turret_btn),
+    ));
+}
+
+fn handle_build_type_selection(
+    mut interaction_query: Query<
+        (&Interaction, &Text),
+        (
+            Or<(With<ObstacleButton>, With<TurretButton>)>,
+            Changed<Interaction>,
+        ),
+    >,
+    mut selected_query: Query<&mut SelectedBuildType, With<User>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
+    let mut selected = if let Ok(s) = selected_query.single_mut() {
+        s
+    } else {
+        return;
+    };
+
+    if keyboard_input.just_pressed(KeyCode::Digit1) {
+        *selected = SelectedBuildType(BuildType::Obstacle);
+        info!("Selected: Obstacle (key 1)");
+        return;
+    }
+
+    if keyboard_input.just_pressed(KeyCode::Digit2) {
+        *selected = SelectedBuildType(BuildType::Turret);
+        info!("Selected: Turret (key 2)");
+        return;
+    }
+
+    for (interaction, text) in interaction_query.iter_mut() {
+        if *interaction == Interaction::Pressed {
+            if text.0.contains("Obstacle") {
+                *selected = SelectedBuildType(BuildType::Obstacle);
+                info!("Selected: Obstacle");
+            } else if text.0.contains("Turret") {
+                *selected = SelectedBuildType(BuildType::Turret);
+                info!("Selected: Turret");
+            }
+        }
+    }
+}
+
+fn update_hud_counts(
+    mut obstacle_count_query: Query<&mut Text, (With<ObstacleCountText>, Without<TurretCountText>)>,
+    mut turret_count_query: Query<&mut Text, (With<TurretCountText>, Without<ObstacleCountText>)>,
+    inventory_query: Query<&Inventory, With<User>>,
+) {
+    if let Ok(inventory) = inventory_query.single() {
+        for mut text in obstacle_count_query.iter_mut() {
+            text.0 = format!("x{}", inventory.obstacles);
+        }
+        for mut text in turret_count_query.iter_mut() {
+            text.0 = format!("x{}", inventory.turrets);
+        }
+    }
+}
+
+fn update_hud_highlight(
+    mut obstacle_btn_query: Query<
+        &mut BackgroundColor,
+        (With<ObstacleButton>, Without<TurretButton>),
+    >,
+    mut turret_btn_query: Query<
+        &mut BackgroundColor,
+        (With<TurretButton>, Without<ObstacleButton>),
+    >,
+    selected_query: Query<&SelectedBuildType, With<User>>,
+) {
+    let selected = if let Ok(s) = selected_query.single() {
+        s
+    } else {
+        return;
+    };
+
+    for mut bg in obstacle_btn_query.iter_mut() {
+        match selected.0 {
+            BuildType::Obstacle => {
+                *bg = BackgroundColor(Color::srgba(0.4, 0.3, 0.2, 1.0));
+            }
+            BuildType::Turret => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
+            }
+        }
+    }
+
+    for mut bg in turret_btn_query.iter_mut() {
+        match selected.0 {
+            BuildType::Obstacle => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
+            }
+            BuildType::Turret => {
+                *bg = BackgroundColor(Color::srgba(0.2, 0.3, 0.4, 1.0));
+            }
         }
     }
 }

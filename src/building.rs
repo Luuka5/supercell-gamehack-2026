@@ -1,7 +1,7 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
-use crate::player::{MainCamera, User};
+use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -24,13 +24,22 @@ pub struct BuildGhost;
 
 fn update_build_preview(
     mut commands: Commands,
-    mut ghost_query: Query<(Entity, &mut Transform, &mut Visibility), With<BuildGhost>>,
+    mut ghost_query: Query<
+        (
+            Entity,
+            &mut Transform,
+            &mut Visibility,
+            &mut MeshMaterial3d<StandardMaterial>,
+        ),
+        With<BuildGhost>,
+    >,
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     player_query: Query<&Transform, (With<User>, Without<BuildGhost>, Without<MainCamera>)>,
     config: Res<ArenaConfig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    selected_query: Query<&SelectedBuildType, With<User>>,
 ) {
     let (camera, camera_transform) = if let Some(c) = camera_query.iter().next() {
         c
@@ -82,19 +91,48 @@ fn update_build_preview(
         let in_range = dist <= BUILD_MAX_DISTANCE;
 
         // Update or Spawn Ghost
-        if let Some((_, mut ghost_transform, mut visibility)) = ghost_query.iter_mut().next() {
+        let Ok(selected) = selected_query.single() else {
+            return;
+        };
+
+        if let Some((_, mut ghost_transform, mut visibility, mut ghost_material)) =
+            ghost_query.iter_mut().next()
+        {
             ghost_transform.translation = snapped_pos;
             *visibility = if in_range {
                 Visibility::Visible
             } else {
                 Visibility::Hidden
             };
+
+            match selected.0 {
+                BuildType::Obstacle => {
+                    ghost_material.0 = materials.add(Color::srgba(0.6, 0.3, 0.3, 0.5));
+                }
+                BuildType::Turret => {
+                    ghost_material.0 = materials.add(Color::srgba(0.0, 0.5, 1.0, 0.5));
+                }
+            }
         } else {
-            // Spawn new ghost
+            let (mesh, color) = match selected.0 {
+                BuildType::Obstacle => (
+                    meshes.add(Cuboid::new(
+                        config.tile_size * 0.8,
+                        6.4,
+                        config.tile_size * 0.8,
+                    )),
+                    Color::srgba(0.6, 0.3, 0.3, 0.5),
+                ),
+                BuildType::Turret => (
+                    meshes.add(Cylinder::new(1.5, 3.0)),
+                    Color::srgba(0.0, 0.5, 1.0, 0.5),
+                ),
+            };
+
             commands.spawn((
                 BuildGhost,
-                Mesh3d(meshes.add(Cuboid::new(config.tile_size, 0.2, config.tile_size))),
-                MeshMaterial3d(materials.add(Color::srgba(0.2, 0.2, 1.0, 0.5))), // Blue semi-transparent
+                Mesh3d(mesh),
+                MeshMaterial3d(materials.add(color)),
                 Transform::from_translation(snapped_pos),
             ));
         }
@@ -111,6 +149,8 @@ fn handle_build_input(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ai_query: Query<&mut TargetDestination, With<AiPlayer>>,
+    selected_query: Query<&SelectedBuildType, With<User>>,
+    mut inventory_query: Query<&mut Inventory, With<User>>,
 ) {
     if let Some((transform, visibility)) = ghost_query.iter().next() {
         if visibility == Visibility::Hidden {
@@ -125,52 +165,72 @@ fn handle_build_input(
 
         // Build (Right Click)
         if mouse_btn.just_pressed(MouseButton::Right) {
-            // Check if occupied
             if grid.occupants.contains_key(&(tile_x, tile_y)) {
                 info!("Cannot build here: Occupied");
                 return;
             }
 
-            // Spawn Obstacle
-            let obstacle_mesh = meshes.add(Cuboid::new(
-                config.tile_size * 0.8,
-                8.0 * 0.8,
-                config.tile_size * 0.8,
-            ));
-            let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
+            let Ok(selected) = selected_query.single() else {
+                return;
+            };
 
-            let obstacle_entity = commands
-                .spawn((
-                    Obstacle,
-                    Mesh3d(obstacle_mesh),
-                    MeshMaterial3d(obstacle_mat),
-                    Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
-                ))
-                .id();
+            match selected.0 {
+                BuildType::Obstacle => {
+                    if let Ok(mut inventory) = inventory_query.single_mut() {
+                        if inventory.obstacles == 0 {
+                            info!("No obstacles left!");
+                            return;
+                        }
 
-            grid.occupants.insert((tile_x, tile_y), obstacle_entity);
-            info!("Built obstacle at ({}, {})", tile_x, tile_y);
-            graph_dirty = true;
+                        let obstacle_mesh = meshes.add(Cuboid::new(
+                            config.tile_size * 0.8,
+                            8.0 * 0.8,
+                            config.tile_size * 0.8,
+                        ));
+                        let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
+
+                        let obstacle_entity = commands
+                            .spawn((
+                                Obstacle,
+                                Mesh3d(obstacle_mesh),
+                                MeshMaterial3d(obstacle_mat),
+                                Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
+                            ))
+                            .id();
+
+                        grid.occupants.insert((tile_x, tile_y), obstacle_entity);
+                        inventory.obstacles -= 1;
+                        info!("Built obstacle at ({}, {})", tile_x, tile_y);
+                        graph_dirty = true;
+                    }
+                }
+                BuildType::Turret => {
+                    if let Ok(mut inventory) = inventory_query.single_mut() {
+                        if inventory.turrets == 0 {
+                            info!("No turrets left!");
+                            return;
+                        }
+
+                        let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
+                        let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
+
+                        commands.spawn((
+                            Obstacle,
+                            Mesh3d(turret_mesh),
+                            MeshMaterial3d(turret_mat),
+                            Transform::from_translation(pos + Vec3::Y * 1.5),
+                        ));
+
+                        inventory.turrets -= 1;
+                        info!("Built turret at ({}, {})", tile_x, tile_y);
+                    }
+                }
+            }
         }
 
         // Destroy (Left Click)
         if mouse_btn.just_pressed(MouseButton::Left) {
             if let Some(&occupant_entity) = grid.occupants.get(&(tile_x, tile_y)) {
-                // Only destroy Obstacles, not Walls (if we want to distinguish, we'd need to query the entity)
-                // For now, let's assume we can destroy anything in `occupants` that isn't a permanent map feature?
-                // The user said "not walls defined by the map".
-                // Walls defined by map are also in `occupants`.
-                // We should check if the entity has `Obstacle` component.
-                // But we don't have access to query components of `occupant_entity` here easily without a `Query`.
-                // We can assume for this prototype that we can destroy anything, or we can try to be safe.
-                // Let's just destroy it for now, or better:
-                // We can't query arbitrary entities without `Query<Entity, With<Obstacle>>`.
-                // Let's add a check.
-
-                // Actually, we can just try to despawn it.
-                // But we should only remove it from grid if it was actually destroyed.
-                // Let's assume we can destroy it.
-
                 commands.entity(occupant_entity).despawn();
                 grid.occupants.remove(&(tile_x, tile_y));
                 info!("Destroyed obstacle at ({}, {})", tile_x, tile_y);
@@ -183,9 +243,7 @@ fn handle_build_input(
         if graph_dirty {
             regenerate_nav_graph(&config, &grid, &mut nav_graph);
 
-            // Force AI to repath
             for mut target in ai_query.iter_mut() {
-                // Trigger change detection by mutating (even if value is same)
                 target.set_changed();
             }
         }
