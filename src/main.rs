@@ -5,6 +5,7 @@ mod combat;
 mod logging;
 mod pathfinding;
 mod player;
+mod player_id;
 mod user;
 
 use ai::{AiPlayer, AiPlugin, AiRuleSet, PathFollower, TargetDestination};
@@ -16,8 +17,10 @@ use building::BuildingPlugin;
 use building::StructureType;
 use combat::{CombatPlugin, Enemy, Hp};
 use logging::LoggingPlugin;
-use player::{Inventory, MovementController, Player, PlayerPlugin, PlayerStatus};
+use player::{Inventory, MovementController, Player, PlayerPlugin};
 use user::{MainCamera, SelectedBuildType, User, UserPlugin};
+
+use bevy_test::{PlayerID, PlayerStatus};
 
 #[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 pub enum GameState {
@@ -168,6 +171,7 @@ fn setup(
     commands.spawn((
         User,
         Player,
+        PlayerID::random(),
         Name::new("User"),
         PlayerStatus::default(),
         Inventory {
@@ -206,6 +210,7 @@ fn setup(
         AiPlayer,
         Enemy,
         Player,
+        PlayerID::random(),
         Name::new("Enemy"),
         PlayerStatus::default(),
         Inventory {

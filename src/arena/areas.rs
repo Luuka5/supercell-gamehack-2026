@@ -1,9 +1,7 @@
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
-pub struct AreaID(pub String);
+pub use bevy_test::AreaID;
 
 impl From<&str> for AreaID {
     fn from(s: &str) -> Self {

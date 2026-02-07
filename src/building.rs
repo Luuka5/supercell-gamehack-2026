@@ -3,6 +3,7 @@ use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::combat::{Turret, TurretDirection};
 use crate::pathfinding::NavGraph;
 use crate::player::Inventory;
+use crate::player_id::PlayerID;
 use crate::user::{MainCamera, SelectedBuildType, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -15,13 +16,7 @@ pub struct Structure {
     pub collider_scale: f32,
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
-pub enum StructureType {
-    #[default]
-    Obstacle,
-    Wall,
-    Turret,
-}
+pub use bevy_test::StructureType;
 
 pub struct BuildingPlugin;
 
@@ -172,7 +167,7 @@ fn handle_build_input(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut ai_query: Query<&mut TargetDestination, With<AiPlayer>>,
     selected_query: Query<&SelectedBuildType, With<User>>,
-    player_query: Query<(Entity, &Transform), With<User>>,
+    player_query: Query<(&PlayerID, &Transform), With<User>>,
     mut inventory_query: Query<&mut Inventory, With<User>>,
 ) {
     if let Some((transform, visibility)) = ghost_query.iter().next() {

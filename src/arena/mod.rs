@@ -210,11 +210,7 @@ pub struct Obstacle;
 #[derive(Component)]
 pub struct SightBlocking;
 
-#[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum CollectibleType {
-    Obstacle,
-    Turret,
-}
+pub use bevy_test::CollectibleType;
 
 #[derive(Component)]
 pub struct Collectible {

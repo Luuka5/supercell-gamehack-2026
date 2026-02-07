@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::logging::{GameEvent, MatchLog};
+use crate::player_id::PlayerID;
 use crate::user::User;
 use crate::GameState;
 
@@ -35,15 +36,7 @@ impl Hp {
     }
 }
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
-pub enum TurretDirection {
-    North,
-    East,
-    South,
-    West,
-}
+pub use bevy_test::TurretDirection;
 
 impl TurretDirection {
     pub fn to_vec3(&self) -> Vec3 {
@@ -87,7 +80,7 @@ impl TurretDirection {
 
 #[derive(Component)]
 pub struct Turret {
-    pub owner: Entity,
+    pub owner: PlayerID,
     pub direction: TurretDirection,
     pub last_shot: f32,
 }
@@ -114,8 +107,8 @@ fn turret_shooting_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    turret_query: Query<(Entity, &Transform, &Turret)>,
-    mut target_query: Query<(Entity, &Transform, &mut Hp, Option<&User>)>,
+    turret_query: Query<&Turret>,
+    mut target_query: Query<(&PlayerID, &Transform, &mut Hp, Option<&User>)>,
     mut next_state: ResMut<NextState<GameState>>,
     mut match_log: ResMut<MatchLog>,
     mut gizmos: Gizmos,
@@ -146,17 +139,14 @@ fn turret_shooting_system(
 
         let direction_vec = turret.direction.to_vec3();
 
-        let mut closest_target: Option<Entity> = None;
+        let mut closest_target: Option<PlayerID> = None;
         let mut closest_distance = f32::MAX;
 
-        for (target_entity, target_transform, _, _) in target_query.iter() {
-            // Don't shoot owner
-            if target_entity == turret.owner {
+        for (target_id, target_transform, _, _) in target_query.iter() {
+            // Turrets don't have PlayerIDs, their owners do. We need to check against the owner.
+            if *target_id == turret.owner {
                 continue;
             }
-
-            // Don't shoot other turrets (unless they have HP, which they don't currently)
-            // Actually target_query filters for Hp, so structures without Hp are ignored.
 
             let target_pos = target_transform.translation;
             let to_target = target_pos - turret_pos;
@@ -166,34 +156,32 @@ fn turret_shooting_system(
                 let target_dir = to_target.normalize();
                 let dot = target_dir.dot(direction_vec);
 
-                // 45 degree cone (half angle 22.5) -> cos(22.5) ~= 0.923
-                // 90 degree cone (half angle 45) -> cos(45) ~= 0.707
-                // User asked for "at least 45 degree cone". Let's assume 45 degrees total width (+/- 22.5).
-                // Or maybe 45 degrees to each side (90 total)? "45 degree cone" usually means total angle.
-                // Let's go with 0.707 (45 degrees to each side, 90 total) to be generous and make them effective.
                 if dot > 0.707 {
                     if distance < closest_distance {
                         closest_distance = distance;
-                        closest_target = Some(target_entity);
+                        closest_target = Some(*target_id);
                     }
                 }
             }
         }
 
-        if let Some(target_entity) = closest_target {
+        if let Some(target_id) = closest_target {
             commands.entity(turret_entity).insert(Turret {
                 owner: turret.owner,
                 direction: turret.direction,
                 last_shot: current_time,
             });
 
-            if let Ok((target_entity, target_transform, mut hp, user)) =
-                target_query.get_mut(target_entity)
-            {
+            if let Ok((_, target_transform, mut hp, user)) = target_query.get_mut(
+                target_query
+                    .iter()
+                    .find(|(id, _, _, _)| **id == target_id)
+                    .unwrap()
+                    .0,
+            ) {
                 hp.take_damage(TURRET_DAMAGE);
 
-                // Visual feedback: Line from turret barrel to target
-                let barrel_pos = turret_pos + Vec3::Y * 1.5; // Approx barrel height
+                let barrel_pos = turret_pos + Vec3::Y * 1.5;
                 gizmos.line(
                     barrel_pos,
                     target_transform.translation,
@@ -202,21 +190,18 @@ fn turret_shooting_system(
 
                 match_log.add(GameEvent::DamageDealt {
                     attacker: turret.owner,
-                    victim: target_entity,
+                    victim: target_id,
                     amount: TURRET_DAMAGE,
                     time: current_time,
                 });
 
                 if hp.is_alive() {
-                    info!(
-                        "Turret hit {:?}! HP: {}/{}",
-                        target_entity, hp.current, hp.max
-                    );
+                    info!("Turret hit {:?}! HP: {}/{}", target_id, hp.current, hp.max);
                 } else {
-                    info!("{:?} destroyed! Final HP: 0/{}", target_entity, hp.max);
+                    info!("{:?} destroyed! Final HP: 0/{}", target_id, hp.max);
 
                     match_log.add(GameEvent::PlayerEliminated {
-                        entity: target_entity,
+                        entity: target_id,
                         killer: Some(turret.owner),
                         time: current_time,
                     });
@@ -225,11 +210,17 @@ fn turret_shooting_system(
                         info!("GAME OVER");
                         next_state.set(GameState::GameOver);
                     } else {
-                        // Check if it was the Enemy
-                        // We can't check With<Enemy> here easily because we are iterating generic targets.
-                        // But if it's not User, it's likely the AI.
-                        // For now, just despawn.
-                        commands.entity(target_entity).despawn();
+                        // Despawn the entity associated with the PlayerID
+                        if let Some(entity_to_despawn) = target_query
+                            .iter()
+                            .find(|(id, _, _, _)| **id == target_id)
+                            .map(|(_, _, _, _)| {
+                                let (p_id, _, _, _) = target_query.get_mut(target_id).unwrap();
+                                p_id
+                            })
+                        {
+                            commands.entity(entity_to_despawn).despawn();
+                        }
                     }
                 }
             }

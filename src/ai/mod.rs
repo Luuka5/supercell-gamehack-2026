@@ -4,7 +4,8 @@ use crate::building::{Structure, StructureType};
 use crate::combat::{Hp, Turret, TurretDirection};
 use crate::logging::{GameEvent, MatchLog};
 use crate::pathfinding::{find_path, NavGraph};
-use crate::player::{Inventory, MovementController, PlayerStatus};
+use crate::player::{Inventory, MovementController};
+use crate::player_id::PlayerID;
 use bevy::prelude::*;
 
 pub mod rules;
@@ -90,6 +91,7 @@ fn rule_evaluation_system(
             &mut Inventory,
             &Transform,
             &mut TargetDestination,
+            &PlayerID,
         ),
         With<AiPlayer>,
     >,
@@ -102,7 +104,7 @@ fn rule_evaluation_system(
     mut match_log: ResMut<MatchLog>,
     time: Res<Time>,
 ) {
-    for (entity, name, rule_set, status, hp, mut inventory, transform, mut target) in
+    for (entity, name, rule_set, status, hp, mut inventory, transform, mut target, player_id) in
         query.iter_mut()
     {
         // Sort rules by priority (descending)
@@ -113,7 +115,7 @@ fn rule_evaluation_system(
             let condition_met = evaluate_condition(&rule.condition, status, hp, &inventory);
 
             match_log.add(GameEvent::AiDecision {
-                entity: entity,
+                entity: *player_id,
                 entity_name: name.to_string(),
                 rule_name: rule.name.clone(),
                 condition_met,
@@ -230,7 +232,7 @@ fn rule_evaluation_system(
                                             &mut nav_graph,
                                         );
                                         match_log.add(GameEvent::StructureBuilt {
-                                            entity,
+                                            entity: *player_id,
                                             structure: StructureType::Obstacle,
                                             location: (tile_x, tile_y),
                                             time: time.elapsed_secs(),
@@ -273,7 +275,7 @@ fn rule_evaluation_system(
                                         let turret_entity = commands
                                             .spawn((
                                                 Turret {
-                                                    owner: entity,
+                                                    owner: *player_id,
                                                     direction: turret_dir,
                                                     last_shot: 0.0,
                                                 },
@@ -308,7 +310,7 @@ fn rule_evaluation_system(
                                             &mut nav_graph,
                                         );
                                         match_log.add(GameEvent::StructureBuilt {
-                                            entity,
+                                            entity: *player_id,
                                             structure: StructureType::Turret,
                                             location: (tile_x, tile_y),
                                             time: time.elapsed_secs(),

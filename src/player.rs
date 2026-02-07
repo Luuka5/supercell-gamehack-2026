@@ -3,6 +3,7 @@ use crate::arena::{ArenaConfig, ArenaGrid, Collectible, ResourceConfig, Resource
 use crate::building::Structure;
 use crate::logging::{GameEvent, MatchLog};
 use crate::pathfinding::{find_path, has_line_of_sight, NavGraph};
+use crate::player_id::PlayerID;
 use bevy::prelude::*;
 use std::collections::HashMap;
 
@@ -22,20 +23,44 @@ pub struct MovementController {
     pub current_velocity: Vec3,
 }
 
-#[derive(Component, Default)]
+pub use bevy_test::PlayerStatus;
+
+impl PlayerStatus {
+    /// Converts the Bevy-specific PlayerStatus into a serializable version from the library.
+    pub fn to_serializable(&self) -> bevy_test::SerializablePlayerStatus {
+        bevy_test::SerializablePlayerStatus {
+            visible_players: self.visible_players.iter().map(|e| e.to_bits()).collect(),
+            nearest_enemy_position: self.nearest_enemy_position.map(|v| (v.x, v.y, v.z)),
+            nearest_enemy_dist: self.nearest_enemy_dist,
+            current_area_id: self.current_area_id.clone(),
+            area_distances: self.area_distances.clone(),
+            visible_areas_from_self: self.visible_areas_from_self.clone(),
+        }
+    }
+}
+
+impl PlayerStatus {
+    /// Converts the Bevy-specific PlayerStatus into a serializable version.
+    pub fn to_serializable(&self) -> bevy_test::SerializablePlayerStatus {
+        bevy_test::SerializablePlayerStatus {
+            visible_players: self.visible_players.iter().map(|e| e.to_bits()).collect(),
+            nearest_enemy_position: self.nearest_enemy_position.map(|v| (v.x, v.y, v.z)),
+            nearest_enemy_dist: self.nearest_enemy_dist,
+            current_area_id: self.current_area_id.clone(),
+            area_distances: self.area_distances.clone(),
+            visible_areas_from_self: self.visible_areas_from_self.clone(),
+        }
+    }
+}
+
+#[derive(Component, Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlayerStatus {
-    pub visible_players: Vec<Entity>,
+    pub visible_players: Vec<PlayerID>,
     pub nearest_enemy_position: Option<Vec3>,
     pub nearest_enemy_dist: f32,
     pub current_area_id: Option<AreaID>,
     pub area_distances: HashMap<AreaID, u32>,
     pub visible_areas_from_self: Vec<AreaID>,
-}
-
-#[derive(Component, Default)]
-pub struct Inventory {
-    pub obstacles: u32,
-    pub turrets: u32,
 }
 
 pub struct PlayerPlugin;
@@ -52,7 +77,7 @@ impl Plugin for PlayerPlugin {
 fn update_player_visibility(
     mut commands: Commands,
     mut player_query: Query<
-        (Entity, &Transform, &mut PlayerStatus),
+        (Entity, &Transform, &mut PlayerStatus, &PlayerID),
         (With<Player>, Without<Collectible>),
     >,
     config: Res<ArenaConfig>,
@@ -62,24 +87,24 @@ fn update_player_visibility(
     mut match_log: ResMut<MatchLog>,
     time: Res<Time>,
 ) {
-    let players: Vec<(Entity, Vec3)> = player_query
+    let players: Vec<(PlayerID, Vec3)> = player_query
         .iter()
-        .map(|(e, t, _)| (e, t.translation))
+        .map(|(_, t, _, pid)| (*pid, t.translation))
         .collect();
 
-    for (entity, transform, mut status) in player_query.iter_mut() {
+    for (entity, transform, mut status, player_id) in player_query.iter_mut() {
         let pos = transform.translation;
         let mut visible = Vec::new();
         let mut nearest_enemy_pos = None;
         let mut nearest_dist = f32::MAX;
 
-        for (other_entity, other_pos) in &players {
-            if entity == *other_entity {
+        for (other_player_id, other_pos) in &players {
+            if player_id == other_player_id {
                 continue;
             }
 
             if has_line_of_sight(pos, *other_pos, &config, &grid) {
-                visible.push(*other_entity);
+                visible.push(*other_player_id);
                 let dist = pos.distance(*other_pos);
                 if dist < nearest_dist {
                     nearest_dist = dist;
@@ -142,7 +167,7 @@ fn update_player_visibility(
 
 fn update_inventory(
     mut commands: Commands,
-    player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
+    player_query: Query<(Entity, &Transform, &PlayerID), (With<Player>, Without<Collectible>)>,
     mut inventory_query: Query<&mut Inventory, With<Player>>,
     collectible_query: Query<(Entity, &Transform, &Collectible), Without<Player>>,
     mut spawner_query: Query<(&mut ResourceSpawner, &Transform)>,
@@ -151,16 +176,16 @@ fn update_inventory(
     config: Res<ArenaConfig>,
     resource_config: Res<ResourceConfig>,
 ) {
-    let players: Vec<(Entity, Vec3)> = player_query
+    let players: Vec<(PlayerID, Vec3)> = player_query
         .iter()
-        .map(|(e, t)| (e, t.translation))
+        .map(|(_, t, pid)| (*pid, t.translation))
         .collect();
     let collectibles: Vec<(Entity, Vec3, crate::arena::CollectibleType)> = collectible_query
         .iter()
         .map(|(e, t, c)| (e, t.translation, c.ty))
         .collect();
 
-    for (player_entity, player_pos) in &players {
+    for (player_id, player_pos) in &players {
         let mut collected_entities = Vec::new();
         let mut collected_obstacles = 0;
         let mut collected_turrets = 0;
@@ -190,7 +215,7 @@ fn update_inventory(
                 }
 
                 match_log.add(GameEvent::ItemCollected {
-                    entity: *player_entity,
+                    entity: *player_id,
                     item_type: *ty,
                     location: (tile_x, tile_y),
                     time: time.elapsed_secs(),
@@ -208,7 +233,13 @@ fn update_inventory(
                 commands.entity(entity).despawn();
             }
 
-            if let Ok(mut inventory) = inventory_query.get_mut(*player_entity) {
+            if let Ok(mut inventory) = inventory_query.get_mut(
+                player_query
+                    .iter()
+                    .find(|(_, _, pid)| *pid == player_id)
+                    .unwrap()
+                    .0,
+            ) {
                 inventory.obstacles += collected_obstacles;
                 inventory.turrets += collected_turrets;
                 info!(
