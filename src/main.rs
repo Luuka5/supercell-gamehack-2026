@@ -112,7 +112,7 @@ fn setup(
         SelectedBuildType(StructureType::Obstacle),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(16.0, PLAYER_SIZE.y / 2.0, 8.0), // Start in the top-left base (Grid 4, 2)
+        Transform::from_xyz(18.0, PLAYER_SIZE.y / 2.0, 10.0), // Start in the top-left base (Grid 4, 2)
     ));
 
     // AI Player
@@ -127,7 +127,7 @@ fn setup(
         TargetDestination { x: 35, y: 25 }, // Go to bottom right (Valid Y)
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.2, 0.2, 0.8))), // Blue AI
-        Transform::from_xyz(24.0, PLAYER_SIZE.y / 2.0, 8.0),       // Start near user (Grid 6, 2)
+        Transform::from_xyz(26.0, PLAYER_SIZE.y / 2.0, 10.0),      // Start near user (Grid 6, 2)
     ));
 
     // Enemy
@@ -143,7 +143,7 @@ fn setup(
         TargetDestination { x: 4, y: 2 }, // Go to User's start (Grid 4, 2)
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))), // Red Enemy
-        Transform::from_xyz(140.0, PLAYER_SIZE.y / 2.0, 8.0),      // Start far away (Grid 35, 2)
+        Transform::from_xyz(142.0, PLAYER_SIZE.y / 2.0, 10.0),     // Start far away (Grid 35, 2)
     ));
 
     // Light

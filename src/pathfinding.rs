@@ -128,10 +128,10 @@ pub fn has_line_of_sight(
     config: &crate::arena::ArenaConfig,
     grid: &crate::arena::ArenaGrid,
 ) -> bool {
-    let x1 = (start.x / config.tile_size).round() as i32;
-    let z1 = (start.z / config.tile_size).round() as i32;
-    let x2 = (end.x / config.tile_size).round() as i32;
-    let z2 = (end.z / config.tile_size).round() as i32;
+    let x1 = ((start.x - config.tile_size * 0.5) / config.tile_size).floor() as i32;
+    let z1 = ((start.z - config.tile_size * 0.5) / config.tile_size).floor() as i32;
+    let x2 = ((end.x - config.tile_size * 0.5) / config.tile_size).floor() as i32;
+    let z2 = ((end.z - config.tile_size * 0.5) / config.tile_size).floor() as i32;
 
     let points = get_line(x1, z1, x2, z2);
 

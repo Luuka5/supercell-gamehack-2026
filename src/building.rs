@@ -74,13 +74,13 @@ fn update_build_preview(
         let hit_point = ray.origin + ray.direction * t;
 
         // Snap to grid
-        let tile_x = (hit_point.x / config.tile_size).round();
-        let tile_z = (hit_point.z / config.tile_size).round();
+        let tile_x = ((hit_point.x - config.tile_size * 0.5) / config.tile_size).floor();
+        let tile_z = ((hit_point.z - config.tile_size * 0.5) / config.tile_size).floor();
 
         let snapped_pos = Vec3::new(
-            tile_x * config.tile_size,
+            tile_x * config.tile_size + config.tile_size * 0.5,
             0.1, // Slightly above ground
-            tile_z * config.tile_size,
+            tile_z * config.tile_size + config.tile_size * 0.5,
         );
 
         // Check distance from player
@@ -167,8 +167,8 @@ fn handle_build_input(
         }
 
         let pos = transform.translation;
-        let tile_x = (pos.x / config.tile_size).round() as u32;
-        let tile_y = (pos.z / config.tile_size).round() as u32;
+        let tile_x = ((pos.x - config.tile_size * 0.5) / config.tile_size).floor() as u32;
+        let tile_y = ((pos.z - config.tile_size * 0.5) / config.tile_size).floor() as u32;
 
         let mut graph_dirty = false;
 
@@ -194,8 +194,12 @@ fn handle_build_input(
             };
 
             let players_at_target = player_query.iter().any(|(_, p_transform)| {
-                let p_tile_x = (p_transform.translation.x / config.tile_size).round() as u32;
-                let p_tile_y = (p_transform.translation.z / config.tile_size).round() as u32;
+                let p_tile_x = ((p_transform.translation.x - config.tile_size * 0.5)
+                    / config.tile_size)
+                    .floor() as u32;
+                let p_tile_y = ((p_transform.translation.z - config.tile_size * 0.5)
+                    / config.tile_size)
+                    .floor() as u32;
                 p_tile_x == tile_x && p_tile_y == tile_y
             });
 
@@ -249,7 +253,7 @@ fn handle_build_input(
                             Obstacle,
                             Structure {
                                 ty: StructureType::Turret(direction),
-                                collider_scale: 0.5,
+                                collider_scale: 0.7,
                             },
                             Turret {
                                 owner: player_entity,

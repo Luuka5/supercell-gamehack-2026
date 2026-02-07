@@ -189,7 +189,7 @@ fn update_inventory(
     }
 }
 
-fn boxes_overlap(
+fn aabb_overlaps(
     min1_x: f32,
     min1_z: f32,
     max1_x: f32,
@@ -222,84 +222,94 @@ fn execute_movement(
                 let move_dir = local_dir.normalize();
                 let speed = PLAYER_SPEED * time.delta_secs();
 
-                let current_x = transform.translation.x;
-                let current_z = transform.translation.z;
-
-                let player_half = PLAYER_SIZE * 0.5;
+                let pos_x = transform.translation.x;
+                let pos_z = transform.translation.z;
+                let half = PLAYER_SIZE * 0.5;
                 let tile_size = config.tile_size;
 
-                let next_x = current_x + move_dir.x * speed;
-                let next_z = current_z + move_dir.z * speed;
+                let dx = move_dir.x * speed;
+                let dz = move_dir.z * speed;
 
-                let player_box_x = (next_x - player_half, next_x + player_half);
-                let player_box_z = (current_z - player_half, current_z + player_half);
+                let player_min_x = pos_x - half;
+                let player_max_x = pos_x + half;
+                let player_min_z = pos_z - half;
+                let player_max_z = pos_z + half;
 
-                let player_box_z_only = (next_z - player_half, next_z + player_half);
-                let player_box_x_only = (current_x - player_half, current_x + player_half);
+                let next_min_x = pos_x + dx - half;
+                let next_max_x = pos_x + dx + half;
+                let next_min_z = pos_z + dz - half;
+                let next_max_z = pos_z + dz + half;
 
-                let mut can_move_x = true;
-                let mut can_move_z = true;
+                let current_tile_x = ((pos_x - tile_size * 0.5) / tile_size).floor() as i32;
+                let current_tile_z = ((pos_z - tile_size * 0.5) / tile_size).floor() as i32;
 
-                for ((&key, &occupant_entity)) in grid.occupants.iter() {
-                    let (tx, tz) = key;
-                    let structure = if let Ok(s) = structure_query.get(occupant_entity) {
-                        s
-                    } else {
+                let next_tile_x_x = ((pos_x + dx - tile_size * 0.5) / tile_size).floor() as i32;
+                let next_tile_z_z = ((pos_z + dz - tile_size * 0.5) / tile_size).floor() as i32;
+
+                let mut move_x = true;
+                let mut move_z = true;
+
+                for ((&key, &entity)) in grid.occupants.iter() {
+                    let (tile_x, tile_z) = key;
+                    let Ok(structure) = structure_query.get(entity) else {
                         continue;
                     };
 
-                    let tile_half = tile_size * 0.5 * structure.collider_scale;
-                    let tile_center_x = tx as f32 * tile_size + tile_size * 0.5;
-                    let tile_center_z = tz as f32 * tile_size + tile_size * 0.5;
+                    let half_size = tile_size * 0.5 * structure.collider_scale;
+                    let center_x = tile_x as f32 * tile_size + tile_size * 0.5;
+                    let center_z = tile_z as f32 * tile_size + tile_size * 0.5;
 
-                    let tile_min_x = tile_center_x - tile_half;
-                    let tile_max_x = tile_center_x + tile_half;
-                    let tile_min_z = tile_center_z - tile_half;
-                    let tile_max_z = tile_center_z + tile_half;
+                    let struct_min_x = center_x - half_size;
+                    let struct_max_x = center_x + half_size;
+                    let struct_min_z = center_z - half_size;
+                    let struct_max_z = center_z + half_size;
 
-                    if can_move_x
-                        && boxes_overlap(
-                            player_box_x.0,
-                            player_box_z.0,
-                            player_box_x.1,
-                            player_box_z.1,
-                            tile_min_x,
-                            tile_min_z,
-                            tile_max_x,
-                            tile_max_z,
+                    if move_x
+                        && aabb_overlaps(
+                            next_min_x,
+                            player_min_z,
+                            next_max_x,
+                            player_max_z,
+                            struct_min_x,
+                            struct_min_z,
+                            struct_max_x,
+                            struct_max_z,
                         )
                     {
-                        can_move_x = false;
+                        move_x = false;
                     }
 
-                    if can_move_z
-                        && boxes_overlap(
-                            player_box_x_only.0,
-                            player_box_z_only.0,
-                            player_box_x_only.1,
-                            player_box_z_only.1,
-                            tile_min_x,
-                            tile_min_z,
-                            tile_max_x,
-                            tile_max_z,
+                    if move_z
+                        && aabb_overlaps(
+                            player_min_x,
+                            next_min_z,
+                            player_max_x,
+                            next_max_z,
+                            struct_min_x,
+                            struct_min_z,
+                            struct_max_x,
+                            struct_max_z,
                         )
                     {
-                        can_move_z = false;
+                        move_z = false;
                     }
                 }
 
-                let mut final_move = Vec3::ZERO;
+                let mut final_dx = 0.0;
+                let mut final_dz = 0.0;
 
-                if can_move_x && can_move_z {
-                    final_move = move_dir * speed;
-                } else if can_move_x {
-                    final_move = Vec3::new(move_dir.x * speed, 0.0, 0.0);
-                } else if can_move_z {
-                    final_move = Vec3::new(0.0, 0.0, move_dir.z * speed);
+                if move_x && move_z {
+                    final_dx = dx;
+                    final_dz = dz;
+                } else if move_x {
+                    final_dx = dx;
+                } else if move_z {
+                    final_dz = dz;
                 }
 
-                if final_move.length_squared() > 0.0 {
-                    transform.translation += final_move;
+                if final_dx != 0.0 || final_dz != 0.0 {
+                    transform.translation.x += final_dx;
+                    transform.translation.z += final_dz;
                 }
             }
         }

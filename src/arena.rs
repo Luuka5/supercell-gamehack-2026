@@ -106,9 +106,9 @@ fn spawn_arena(
             let y = y as u32;
 
             let position = Vec3::new(
-                x as f32 * config.tile_size,
+                x as f32 * config.tile_size + config.tile_size * 0.5,
                 0.0,
-                y as f32 * config.tile_size,
+                y as f32 * config.tile_size + config.tile_size * 0.5,
             );
 
             let tile_entity = commands
@@ -144,6 +144,10 @@ fn spawn_arena(
                         .spawn((
                             Obstacle,
                             SightBlocking,
+                            Structure {
+                                ty: StructureType::Obstacle,
+                                collider_scale: 1.0,
+                            },
                             Mesh3d(obstacle_mesh.clone()),
                             MeshMaterial3d(obstacle_mat.clone()),
                             Transform::from_translation(position + Vec3::Y * (wall_height * 0.4)),

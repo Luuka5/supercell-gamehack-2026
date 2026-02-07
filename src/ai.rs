@@ -39,8 +39,10 @@ fn pathfinding_system(
     config: Res<ArenaConfig>,
 ) {
     for (entity, transform, target) in query.iter_mut() {
-        let start_x = (transform.translation.x / config.tile_size).round() as u32;
-        let start_y = (transform.translation.z / config.tile_size).round() as u32;
+        let start_x =
+            ((transform.translation.x - config.tile_size * 0.5) / config.tile_size).floor() as u32;
+        let start_y =
+            ((transform.translation.z - config.tile_size * 0.5) / config.tile_size).floor() as u32;
 
         if let Some(path) = find_path((start_x, start_y), (target.x, target.y), &nav_graph) {
             info!(
@@ -85,9 +87,9 @@ fn path_following_system(
 
         let target_node = follower.path[follower.current_index];
         let target_pos = Vec3::new(
-            target_node.0 as f32 * config.tile_size,
+            target_node.0 as f32 * config.tile_size + config.tile_size * 0.5,
             transform.translation.y,
-            target_node.1 as f32 * config.tile_size,
+            target_node.1 as f32 * config.tile_size + config.tile_size * 0.5,
         );
 
         let direction = target_pos - transform.translation;
