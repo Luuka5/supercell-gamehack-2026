@@ -3,13 +3,12 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
-pub enum AreaID {
-    UserBase,
-    EnemyBase,
-    CenterArena,
-    NorthCorridor,
-    SouthCorridor,
-    Unknown,
+pub struct AreaID(pub String);
+
+impl From<&str> for AreaID {
+    fn from(s: &str) -> Self {
+        AreaID(s.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Reflect)]
@@ -59,13 +58,13 @@ impl AreaMap {
         Self { areas }
     }
 
-    pub fn get_area_id(&self, x: u32, y: u32) -> AreaID {
+    pub fn get_area_id(&self, x: u32, y: u32) -> Option<AreaID> {
         for area in &self.areas {
             if area.contains(x, y) {
-                return area.id.clone();
+                return Some(area.id.clone());
             }
         }
-        AreaID::Unknown
+        None
     }
 
     pub fn get_center(&self, id: AreaID) -> Option<(u32, u32)> {

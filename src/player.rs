@@ -116,15 +116,17 @@ fn update_player_visibility(
             let new_area_id = map.get_area_id(tile_x, tile_y);
 
             // Log area change
-            if status.current_area_id.as_ref() != Some(&new_area_id) {
-                match_log.add(GameEvent::AreaEntered {
-                    entity,
-                    area_id: new_area_id.clone(),
-                    time: time.elapsed_secs(),
-                });
+            if let Some(new_id) = &new_area_id {
+                if status.current_area_id.as_ref() != Some(new_id) {
+                    match_log.add(GameEvent::AreaEntered {
+                        entity,
+                        area_id: new_id.clone(),
+                        time: time.elapsed_secs(),
+                    });
+                }
             }
 
-            Some(new_area_id)
+            new_area_id
         } else {
             None
         };

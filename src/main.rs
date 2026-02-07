@@ -71,10 +71,10 @@ fn main() {
     let arena_description = ArenaDescription {
         layout: ARENA_LAYOUT.to_string(),
         areas: vec![
-            Area::new(AreaID::UserBase, 0, 0, 10, 10),
-            Area::new(AreaID::EnemyBase, 30, 0, 39, 10),
-            Area::new(AreaID::CenterArena, 11, 0, 29, 27),
-            Area::new(AreaID::NorthCorridor, 0, 11, 39, 27),
+            Area::new(AreaID("UserBase".to_string()), 0, 0, 10, 10),
+            Area::new(AreaID("EnemyBase".to_string()), 30, 0, 39, 10),
+            Area::new(AreaID("CenterArena".to_string()), 11, 0, 29, 27),
+            Area::new(AreaID("NorthCorridor".to_string()), 0, 11, 39, 27),
         ],
         player_spawn: Vec3::new(18.0, PLAYER_SIZE.y / 2.0, 10.0),
         ai_spawn: Vec3::new(26.0, PLAYER_SIZE.y / 2.0, 10.0),

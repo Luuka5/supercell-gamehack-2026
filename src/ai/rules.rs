@@ -53,7 +53,7 @@ impl Default for RuleSet {
                     name: "RetreatToSafety".to_string(),
                     priority: 100,
                     condition: Condition::IsHealthLow { threshold: 1 },
-                    action: Action::MoveToArea(AreaID::EnemyBase),
+                    action: Action::MoveToArea(AreaID("EnemyBase".to_string())),
                 },
                 // Rule 2: Deploy Combat Turret (High Priority)
                 Rule {
@@ -83,7 +83,7 @@ impl Default for RuleSet {
                     name: "FortifyCenter".to_string(),
                     priority: 50,
                     condition: Condition::And(vec![
-                        Condition::InArea(AreaID::CenterArena),
+                        Condition::InArea(AreaID("CenterArena".to_string())),
                         Condition::HasItem {
                             item: "obstacle".to_string(),
                             count: 1,
@@ -98,15 +98,17 @@ impl Default for RuleSet {
                 Rule {
                     name: "ClaimCenter".to_string(),
                     priority: 20,
-                    condition: Condition::Not(Box::new(Condition::InArea(AreaID::CenterArena))),
-                    action: Action::MoveToArea(AreaID::CenterArena),
+                    condition: Condition::Not(Box::new(Condition::InArea(AreaID(
+                        "CenterArena".to_string(),
+                    )))),
+                    action: Action::MoveToArea(AreaID("CenterArena".to_string())),
                 },
                 // Rule 6: Invade Player Base (Lowest Priority)
                 Rule {
                     name: "InvadePlayerBase".to_string(),
                     priority: 10,
-                    condition: Condition::InArea(AreaID::CenterArena),
-                    action: Action::MoveToArea(AreaID::UserBase),
+                    condition: Condition::InArea(AreaID("CenterArena".to_string())),
+                    action: Action::MoveToArea(AreaID("UserBase".to_string())),
                 },
             ],
         }
