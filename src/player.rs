@@ -1,7 +1,8 @@
 use crate::arena::areas::{AreaID, AreaMap};
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::building::Structure;
-use crate::pathfinding::has_line_of_sight;
+use crate::pathfinding::{find_path, has_line_of_sight, NavGraph};
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 pub const PLAYER_SPEED: f32 = 20.0;
@@ -26,6 +27,8 @@ pub struct PlayerStatus {
     pub nearest_enemy_position: Option<Vec3>,
     pub nearest_enemy_dist: f32,
     pub current_area_id: Option<AreaID>,
+    pub area_distances: HashMap<AreaID, u32>,
+    pub visible_areas_from_self: Vec<AreaID>,
 }
 
 #[derive(Component, Default)]
@@ -51,6 +54,7 @@ fn update_player_visibility(
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
     area_map: Option<Res<AreaMap>>,
+    nav_graph: Res<NavGraph>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
@@ -77,9 +81,31 @@ fn update_player_visibility(
             }
         }
 
+        let mut area_distances = HashMap::default();
+        let mut visible_areas_from_self = Vec::new();
+
         let current_area = if let Some(map) = &area_map {
             let tile_x = ((pos.x - config.tile_size * 0.5) / config.tile_size).floor() as u32;
             let tile_y = ((pos.z - config.tile_size * 0.5) / config.tile_size).floor() as u32;
+
+            // Calculate distances to all areas
+            for area in &map.areas {
+                if let Some(path) = find_path((tile_x, tile_y), area.center, &nav_graph) {
+                    area_distances.insert(area.id.clone(), path.len() as u32);
+                }
+
+                // Check visibility to area center
+                let area_center_world = Vec3::new(
+                    area.center.0 as f32 * config.tile_size + config.tile_size * 0.5,
+                    0.5,
+                    area.center.1 as f32 * config.tile_size + config.tile_size * 0.5,
+                );
+
+                if has_line_of_sight(*pos, area_center_world, &config, &grid) {
+                    visible_areas_from_self.push(area.id.clone());
+                }
+            }
+
             Some(map.get_area_id(tile_x, tile_y))
         } else {
             None
@@ -90,6 +116,8 @@ fn update_player_visibility(
             nearest_enemy_position: nearest_enemy_pos,
             nearest_enemy_dist: nearest_dist,
             current_area_id: current_area,
+            area_distances,
+            visible_areas_from_self,
         });
     }
 }
