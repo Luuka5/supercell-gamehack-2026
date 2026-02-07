@@ -91,6 +91,18 @@ pub struct Turret {
     pub direction: TurretDirection,
 }
 
+#[derive(Component)]
+pub struct Structure {
+    pub ty: StructureType,
+    pub collider_scale: f32,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum StructureType {
+    Obstacle,
+    Turret(TurretDirection),
+}
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -184,6 +196,9 @@ fn update_inventory(
 fn execute_movement(
     time: Res<Time>,
     mut query: Query<(&mut Transform, &MovementController), (With<Player>, Without<Collectible>)>,
+    config: Res<ArenaConfig>,
+    grid: Res<ArenaGrid>,
+    structure_query: Query<&Structure>,
 ) {
     for (mut transform, controller) in query.iter_mut() {
         if controller.rotation_delta != 0.0 {
@@ -196,7 +211,63 @@ fn execute_movement(
 
             if local_dir.length_squared() > 0.0 {
                 let move_dir = local_dir.normalize();
-                transform.translation += move_dir * PLAYER_SPEED * time.delta_secs();
+                let speed = PLAYER_SPEED * time.delta_secs();
+
+                let current_tile_x = (transform.translation.x / config.tile_size).round() as i32;
+                let current_tile_y = (transform.translation.z / config.tile_size).round() as i32;
+
+                let next_x = transform.translation.x + move_dir.x * speed;
+                let next_y = transform.translation.z + move_dir.z * speed;
+
+                let next_tile_x = (next_x / config.tile_size).round() as i32;
+                let next_tile_y = (next_y / config.tile_size).round() as i32;
+
+                let mut can_move_x = true;
+                let mut can_move_y = true;
+
+                if let Some(&occupant_entity) = grid
+                    .occupants
+                    .get(&(next_tile_x as u32, current_tile_y as u32))
+                {
+                    if let Ok(structure) = structure_query.get(occupant_entity) {
+                        let tile_center_x = next_tile_x as f32 * config.tile_size;
+                        let tile_center_y = current_tile_y as f32 * config.tile_size;
+                        let collider_radius = structure.collider_scale * config.tile_size * 0.4;
+
+                        if (next_x - tile_center_x).abs() > collider_radius {
+                            can_move_x = false;
+                        }
+                    }
+                }
+
+                if let Some(&occupant_entity) = grid
+                    .occupants
+                    .get(&(current_tile_x as u32, next_tile_y as u32))
+                {
+                    if let Ok(structure) = structure_query.get(occupant_entity) {
+                        let tile_center_x = current_tile_x as f32 * config.tile_size;
+                        let tile_center_y = next_tile_y as f32 * config.tile_size;
+                        let collider_radius = structure.collider_scale * config.tile_size * 0.4;
+
+                        if (next_y - tile_center_y).abs() > collider_radius {
+                            can_move_y = false;
+                        }
+                    }
+                }
+
+                let mut final_move = Vec3::ZERO;
+
+                if can_move_x && can_move_y {
+                    final_move = move_dir * speed;
+                } else if can_move_x {
+                    final_move = Vec3::new(move_dir.x * speed, 0.0, 0.0);
+                } else if can_move_y {
+                    final_move = Vec3::new(0.0, 0.0, move_dir.z * speed);
+                }
+
+                if final_move.length_squared() > 0.0 {
+                    transform.translation += final_move;
+                }
             }
         }
     }

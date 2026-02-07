@@ -1,7 +1,10 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
-use crate::player::{BuildType, Inventory, MainCamera, SelectedBuildType, Turret, TurretDirection};
+use crate::player::{
+    BuildType, Inventory, MainCamera, SelectedBuildType, Structure, StructureType, Turret,
+    TurretDirection,
+};
 use crate::user::User;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -186,6 +189,17 @@ fn handle_build_input(
                 return;
             };
 
+            let players_at_target = player_query.iter().any(|(_, p_transform)| {
+                let p_tile_x = (p_transform.translation.x / config.tile_size).round() as u32;
+                let p_tile_y = (p_transform.translation.z / config.tile_size).round() as u32;
+                p_tile_x == tile_x && p_tile_y == tile_y
+            });
+
+            if players_at_target {
+                info!("Cannot build here: Player is on this tile");
+                return;
+            }
+
             match selected.0 {
                 BuildType::Obstacle => {
                     if inventory.obstacles == 0 {
@@ -203,6 +217,10 @@ fn handle_build_input(
                     let obstacle_entity = commands
                         .spawn((
                             Obstacle,
+                            Structure {
+                                ty: StructureType::Obstacle,
+                                collider_scale: 1.0,
+                            },
                             Mesh3d(obstacle_mesh),
                             MeshMaterial3d(obstacle_mat),
                             Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
@@ -223,10 +241,13 @@ fn handle_build_input(
                     let direction = TurretDirection::from_quat(player_transform.rotation);
                     let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
                     let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
-
                     let turret_entity = commands
                         .spawn((
                             Obstacle,
+                            Structure {
+                                ty: StructureType::Turret(direction),
+                                collider_scale: 0.75,
+                            },
                             Turret {
                                 owner: player_entity,
                                 direction,
