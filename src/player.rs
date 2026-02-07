@@ -1,3 +1,5 @@
+use crate::arena::{ArenaConfig, ArenaGrid};
+use crate::pathfinding::has_line_of_sight;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -6,7 +8,15 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (handle_user_input, execute_movement, camera_follow));
+        app.add_systems(
+            Update,
+            (
+                handle_user_input,
+                execute_movement,
+                camera_follow,
+                update_player_visibility,
+            ),
+        );
     }
 }
 
@@ -27,13 +37,47 @@ pub struct MainCamera {
     pub pitch: f32,
 }
 
-// Constants (duplicated from main for now, or should be shared?)
-// Let's redefine them here or pass them via resource.
-// For simplicity, I'll redefine them.
+#[derive(Component, Default)]
+pub struct PlayerStatus {
+    pub visible_players: Vec<Entity>,
+}
+
+// Constants
 const CAMERA_DISTANCE: f32 = 6.0;
 const CAMERA_HEIGHT_OFFSET: f32 = 2.0;
 const MOUSE_SENSITIVITY: f32 = 0.05;
 const PLAYER_SPEED: f32 = 20.0;
+
+fn update_player_visibility(
+    mut commands: Commands,
+    player_query: Query<(Entity, &Transform), With<Player>>,
+    config: Res<ArenaConfig>,
+    grid: Res<ArenaGrid>,
+) {
+    let players: Vec<(Entity, Vec3)> = player_query
+        .iter()
+        .map(|(e, t)| (e, t.translation))
+        .collect();
+
+    for (entity, pos) in &players {
+        let mut visible = Vec::new();
+
+        for (other_entity, other_pos) in &players {
+            if *entity == *other_entity {
+                continue;
+            }
+
+            if has_line_of_sight(*pos, *other_pos, &config, &grid) {
+                visible.push(*other_entity);
+            }
+        }
+
+        // We blindly insert/overwrite for simplicity in this update loop.
+        commands.entity(*entity).insert(PlayerStatus {
+            visible_players: visible,
+        });
+    }
+}
 
 fn handle_user_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,

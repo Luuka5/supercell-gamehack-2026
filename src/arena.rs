@@ -61,6 +61,9 @@ pub struct Wall;
 #[derive(Component)]
 pub struct Obstacle;
 
+#[derive(Component)]
+pub struct SightBlocking;
+
 fn spawn_arena(
     mut commands: Commands,
     config: Res<ArenaConfig>,
@@ -111,6 +114,7 @@ fn spawn_arena(
                     let wall_entity = commands
                         .spawn((
                             Wall,
+                            SightBlocking,
                             Mesh3d(wall_mesh.clone()),
                             MeshMaterial3d(wall_mat.clone()),
                             Transform::from_translation(position + Vec3::Y * (wall_height / 2.0)),
@@ -122,6 +126,7 @@ fn spawn_arena(
                     let obstacle_entity = commands
                         .spawn((
                             Obstacle,
+                            SightBlocking,
                             Mesh3d(obstacle_mesh.clone()),
                             MeshMaterial3d(obstacle_mat.clone()),
                             Transform::from_translation(position + Vec3::Y * (wall_height * 0.4)),

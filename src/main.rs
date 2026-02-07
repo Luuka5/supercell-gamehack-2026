@@ -9,7 +9,7 @@ use arena::{ArenaConfig, ArenaPlugin};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
-use player::{MainCamera, MovementController, Player, PlayerPlugin, User};
+use player::{MainCamera, MovementController, Player, PlayerPlugin, PlayerStatus, User};
 
 // --- Game Constants ---
 // Note: These are also defined in player.rs for now.
@@ -96,6 +96,8 @@ fn setup(
     commands.spawn((
         User,
         Player,
+        Name::new("User"),
+        PlayerStatus::default(),
         MovementController::default(),
         Mesh3d(meshes.add(Cuboid::new(PLAYER_SIZE.x, PLAYER_SIZE.y, PLAYER_SIZE.z))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
@@ -106,6 +108,8 @@ fn setup(
     commands.spawn((
         AiPlayer,
         Player,
+        Name::new("Friendly AI"),
+        PlayerStatus::default(),
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 35, y: 25 }, // Go to bottom right (Valid Y)
@@ -119,6 +123,8 @@ fn setup(
         AiPlayer,
         Enemy,
         Player,
+        Name::new("Enemy"),
+        PlayerStatus::default(),
         MovementController::default(),
         PathFollower::default(),
         TargetDestination { x: 4, y: 2 }, // Go to User's start (Grid 4, 2)

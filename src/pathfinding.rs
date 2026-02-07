@@ -93,3 +93,64 @@ pub fn find_path(start: (u32, u32), goal: (u32, u32), graph: &NavGraph) -> Optio
     );
     None
 }
+
+fn get_line(x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<(i32, i32)> {
+    let mut points = Vec::new();
+    let mut dx = (x1 - x0).abs();
+    let mut dy = -(y1 - y0).abs();
+    let mut x = x0;
+    let mut y = y0;
+    let mut sx = if x0 < x1 { 1 } else { -1 };
+    let mut sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+
+    loop {
+        points.push((x, y));
+        if x == x1 && y == y1 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+    }
+    points
+}
+
+pub fn has_line_of_sight(
+    start: Vec3,
+    end: Vec3,
+    config: &crate::arena::ArenaConfig,
+    grid: &crate::arena::ArenaGrid,
+) -> bool {
+    let x1 = (start.x / config.tile_size).round() as i32;
+    let z1 = (start.z / config.tile_size).round() as i32;
+    let x2 = (end.x / config.tile_size).round() as i32;
+    let z2 = (end.z / config.tile_size).round() as i32;
+
+    let points = get_line(x1, z1, x2, z2);
+
+    for (x, z) in points {
+        // Skip start tile
+        if x == x1 && z == z1 {
+            continue;
+        }
+
+        // Check bounds
+        if x < 0 || x >= config.width as i32 || z < 0 || z >= config.height as i32 {
+            return false; // Out of bounds is blocking
+        }
+
+        // Check occupants
+        if grid.occupants.contains_key(&(x as u32, z as u32)) {
+            return false; // Blocked
+        }
+    }
+
+    true
+}
