@@ -6,6 +6,8 @@ pub const PLAYER_SPEED: f32 = 20.0;
 pub const ACCELERATION: f32 = 10.0;
 pub const DECELERATION: f32 = 30.0;
 
+const PLAYER_SIZE: f32 = 0.7;
+
 #[derive(Component)]
 pub struct Player;
 
@@ -113,8 +115,6 @@ impl Plugin for PlayerPlugin {
         );
     }
 }
-
-const PLAYER_SIZE: f32 = 0.5;
 
 fn update_player_visibility(
     mut commands: Commands,

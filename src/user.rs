@@ -1,6 +1,7 @@
-use crate::arena::Collectible;
+use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
 use crate::player::{
-    Inventory, MainCamera, MovementController, SelectedBuildType, StructureType, TurretDirection,
+    Inventory, MainCamera, MovementController, SelectedBuildType, Structure, StructureType,
+    TurretDirection,
 };
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
@@ -8,6 +9,7 @@ use bevy::window::PrimaryWindow;
 
 const CAMERA_DISTANCE: f32 = 6.0;
 const CAMERA_HEIGHT_OFFSET: f32 = 2.0;
+const CAMERA_MIN_DISTANCE: f32 = 1.5;
 
 #[derive(Component)]
 pub struct User;
@@ -343,6 +345,9 @@ fn update_hud_highlight(
 fn camera_follow(
     player_query: Query<&Transform, With<User>>,
     mut camera_query: Query<(&mut Transform, &MainCamera), Without<User>>,
+    config: Res<ArenaConfig>,
+    grid: Res<ArenaGrid>,
+    structure_query: Query<&Structure>,
 ) {
     if let Some(player_transform) = player_query.iter().next() {
         if let Some((mut camera_transform, camera)) = camera_query.iter_mut().next() {
@@ -351,10 +356,96 @@ fn camera_follow(
 
             let pitch_rot = Quat::from_rotation_x(-camera.pitch);
             let rotation = player_transform.rotation * pitch_rot;
-            let offset = rotation * Vec3::Z * CAMERA_DISTANCE;
+
+            let camera_dir = rotation * Vec3::Z;
+            let desired_distance = get_collision_adjusted_distance(
+                look_target,
+                camera_dir,
+                CAMERA_DISTANCE,
+                CAMERA_MIN_DISTANCE,
+                &config,
+                &grid,
+                &structure_query,
+            );
+
+            let offset = rotation * Vec3::Z * desired_distance;
 
             camera_transform.translation = look_target + offset;
             camera_transform.look_at(look_target, Vec3::Y);
         }
+    }
+}
+
+fn get_collision_adjusted_distance(
+    origin: Vec3,
+    direction: Vec3,
+    max_distance: f32,
+    min_distance: f32,
+    config: &ArenaConfig,
+    grid: &ArenaGrid,
+    structure_query: &Query<&Structure>,
+) -> f32 {
+    let mut closest_hit = max_distance;
+
+    for (&key, &entity) in grid.occupants.iter() {
+        let (tile_x, tile_z) = key;
+        let Ok(structure) = structure_query.get(entity) else {
+            continue;
+        };
+
+        let half_size = config.tile_size * 0.5 * structure.collider_scale;
+        let center_x = tile_x as f32 * config.tile_size + config.tile_size * 0.5;
+        let center_z = tile_z as f32 * config.tile_size + config.tile_size * 0.5;
+
+        let min = Vec3::new(center_x - half_size, 0.0, center_z - half_size);
+        let max = Vec3::new(center_x + half_size, 8.0, center_z + half_size);
+
+        if let Some(distance) = ray_aabb_intersection(origin, direction, min, max) {
+            if distance < closest_hit && distance > min_distance {
+                closest_hit = distance;
+            }
+        }
+    }
+
+    closest_hit.max(min_distance)
+}
+
+fn ray_aabb_intersection(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f32> {
+    let inv_dir = Vec3::new(
+        if direction.x != 0.0 {
+            1.0 / direction.x
+        } else {
+            f32::MAX
+        },
+        if direction.y != 0.0 {
+            1.0 / direction.y
+        } else {
+            f32::MAX
+        },
+        if direction.z != 0.0 {
+            1.0 / direction.z
+        } else {
+            f32::MAX
+        },
+    );
+
+    let t1 = (min.x - origin.x) * inv_dir.x;
+    let t2 = (max.x - origin.x) * inv_dir.x;
+    let t3 = (min.y - origin.y) * inv_dir.y;
+    let t4 = (max.y - origin.y) * inv_dir.y;
+    let t5 = (min.z - origin.z) * inv_dir.z;
+    let t6 = (max.z - origin.z) * inv_dir.z;
+
+    let tmin = t1.min(t2).max(t3.min(t4)).max(t5.min(t6));
+    let tmax = t1.max(t2).min(t3.max(t4)).min(t5.max(t6));
+
+    if tmax < 0.0 || tmin > tmax {
+        return None;
+    }
+
+    if tmin < 0.0 {
+        Some(tmax)
+    } else {
+        Some(tmin)
     }
 }
