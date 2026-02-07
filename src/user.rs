@@ -304,7 +304,7 @@ fn handle_build_type_selection(
     }
 
     if keyboard_input.just_pressed(KeyCode::Digit2) {
-        *selected = SelectedBuildType(StructureType::Turret(turret_direction));
+        *selected = SelectedBuildType(StructureType::Turret);
         info!(
             "Selected: Turret (key 2) facing {:?} (forward: {:?})",
             turret_direction, forward
@@ -318,7 +318,7 @@ fn handle_build_type_selection(
                 *selected = SelectedBuildType(StructureType::Obstacle);
                 info!("Selected: Obstacle");
             } else if text.0.contains("Turret") {
-                *selected = SelectedBuildType(StructureType::Turret(turret_direction));
+                *selected = SelectedBuildType(StructureType::Turret);
                 info!(
                     "Selected: Turret facing {:?} (forward: {:?})",
                     turret_direction, forward
@@ -365,7 +365,7 @@ fn update_hud_highlight(
             StructureType::Obstacle => {
                 *bg = BackgroundColor(Color::srgba(0.4, 0.3, 0.2, 1.0));
             }
-            StructureType::Turret(_) => {
+            StructureType::Turret => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
             }
             StructureType::Wall => {
@@ -379,7 +379,7 @@ fn update_hud_highlight(
             StructureType::Obstacle => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.2, 0.2, 1.0));
             }
-            StructureType::Turret(_) => {
+            StructureType::Turret => {
                 *bg = BackgroundColor(Color::srgba(0.2, 0.3, 0.4, 1.0));
             }
             StructureType::Wall => {

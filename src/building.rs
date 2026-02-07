@@ -1,5 +1,5 @@
 use crate::ai::{AiPlayer, TargetDestination};
-use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
+use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
 use crate::pathfinding::NavGraph;
 use crate::player::{
     Inventory, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
@@ -109,7 +109,7 @@ fn update_build_preview(
                 StructureType::Obstacle => {
                     ghost_material.0 = materials.add(Color::srgba(0.6, 0.3, 0.3, 0.5));
                 }
-                StructureType::Turret(_) => {
+                StructureType::Turret => {
                     ghost_material.0 = materials.add(Color::srgba(0.0, 0.5, 1.0, 0.5));
                 }
                 StructureType::Wall => {}
@@ -124,7 +124,7 @@ fn update_build_preview(
                     )),
                     Color::srgba(0.6, 0.3, 0.3, 0.5),
                 ),
-                StructureType::Turret(_) => (
+                StructureType::Turret => (
                     meshes.add(Cylinder::new(1.5, 3.0)),
                     Color::srgba(0.0, 0.5, 1.0, 0.5),
                 ),
@@ -238,39 +238,74 @@ fn handle_build_input(
                     info!("Built obstacle at ({}, {})", tile_x, tile_y);
                     graph_dirty = true;
                 }
-                StructureType::Turret(direction) => {
+                StructureType::Turret => {
                     if inventory.turrets == 0 {
                         info!("No turrets left!");
                         return;
                     }
 
+                    let player_transform = if let Ok(t) = player_query.single().map(|(_, t)| t) {
+                        t
+                    } else {
+                        return;
+                    };
+
+                    let forward = player_transform.forward();
+                    let abs_x = forward.x.abs();
+                    let abs_z = forward.z.abs();
+                    let actual_direction = if abs_x > abs_z {
+                        if forward.x > 0.0 {
+                            TurretDirection::East
+                        } else {
+                            TurretDirection::West
+                        }
+                    } else {
+                        if forward.z > 0.0 {
+                            TurretDirection::South
+                        } else {
+                            TurretDirection::North
+                        }
+                    };
+
                     let turret_mesh = meshes.add(Cylinder::new(1.5, 3.0));
                     let turret_mat = materials.add(Color::srgb(0.0, 0.5, 1.0));
-                    let current_time = time.elapsed_secs();
+                    let barrel_mesh = meshes.add(Cuboid::new(0.5, 0.5, 2.0));
+                    let barrel_mat = materials.add(Color::srgb(0.2, 0.2, 0.8));
+
+                    let rotation = actual_direction.to_quat();
+                    let barrel_offset = rotation * Vec3::Z * 2.5;
+
                     let turret_entity = commands
                         .spawn((
                             Obstacle,
                             Structure {
-                                ty: StructureType::Turret(direction),
+                                ty: StructureType::Turret,
                                 collider_scale: 0.7,
                             },
                             Turret {
                                 owner: player_entity,
-                                direction,
-                                last_shot: time.elapsed_secs(),
+                                direction: actual_direction,
+                                last_shot: time.elapsed_secs() - 4.0,
                             },
                             Mesh3d(turret_mesh),
                             MeshMaterial3d(turret_mat),
                             Transform::from_translation(pos + Vec3::Y * 1.5)
-                                .with_rotation(direction.to_quat()),
+                                .with_rotation(rotation),
                         ))
+                        .with_children(|parent| {
+                            parent.spawn((
+                                Mesh3d(barrel_mesh),
+                                MeshMaterial3d(barrel_mat),
+                                Transform::from_translation(barrel_offset + Vec3::Y * 0.5),
+                            ));
+                        })
                         .id();
 
                     grid.occupants.insert((tile_x, tile_y), turret_entity);
                     inventory.turrets -= 1;
                     info!(
                         "Built turret at ({}, {}) facing {:?}",
-                        tile_x, tile_y, direction
+                        tile_x, tile_y, actual_direction
                     );
                 }
                 StructureType::Wall => {}

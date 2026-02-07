@@ -132,7 +132,7 @@ pub enum StructureType {
     #[default]
     Obstacle,
     Wall,
-    Turret(TurretDirection),
+    Turret,
 }
 
 #[derive(Component)]
