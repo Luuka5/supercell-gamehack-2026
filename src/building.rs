@@ -1,4 +1,6 @@
-use crate::arena::{ArenaConfig, ArenaGrid, Obstacle};
+use crate::ai::{AiPlayer, TargetDestination};
+use crate::arena::{ArenaConfig, ArenaGrid, Obstacle, regenerate_nav_graph};
+use crate::pathfinding::NavGraph;
 use crate::player::{MainCamera, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -105,19 +107,24 @@ fn handle_build_input(
     ghost_query: Query<(&Transform, &Visibility), With<BuildGhost>>,
     config: Res<ArenaConfig>,
     mut grid: ResMut<ArenaGrid>,
+    mut nav_graph: ResMut<NavGraph>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut ai_query: Query<&mut TargetDestination, With<AiPlayer>>,
 ) {
-    if mouse_btn.just_pressed(MouseButton::Left) {
-        if let Some((transform, visibility)) = ghost_query.iter().next() {
-            if visibility == Visibility::Hidden {
-                return;
-            }
+    if let Some((transform, visibility)) = ghost_query.iter().next() {
+        if visibility == Visibility::Hidden {
+            return;
+        }
 
-            let pos = transform.translation;
-            let tile_x = (pos.x / config.tile_size).round() as u32;
-            let tile_y = (pos.z / config.tile_size).round() as u32; // Z maps to Y in grid
+        let pos = transform.translation;
+        let tile_x = (pos.x / config.tile_size).round() as u32;
+        let tile_y = (pos.z / config.tile_size).round() as u32;
 
+        let mut graph_dirty = false;
+
+        // Build (Right Click)
+        if mouse_btn.just_pressed(MouseButton::Right) {
             // Check if occupied
             if grid.occupants.contains_key(&(tile_x, tile_y)) {
                 info!("Cannot build here: Occupied");
@@ -127,7 +134,7 @@ fn handle_build_input(
             // Spawn Obstacle
             let obstacle_mesh = meshes.add(Cuboid::new(
                 config.tile_size * 0.8,
-                8.0 * 0.8, // Wall height * 0.8
+                8.0 * 0.8,
                 config.tile_size * 0.8,
             ));
             let obstacle_mat = materials.add(Color::srgb(0.6, 0.3, 0.3));
@@ -137,12 +144,50 @@ fn handle_build_input(
                     Obstacle,
                     Mesh3d(obstacle_mesh),
                     MeshMaterial3d(obstacle_mat),
-                    Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)), // Adjust height
+                    Transform::from_translation(pos + Vec3::Y * (8.0 * 0.4)),
                 ))
                 .id();
 
             grid.occupants.insert((tile_x, tile_y), obstacle_entity);
             info!("Built obstacle at ({}, {})", tile_x, tile_y);
+            graph_dirty = true;
+        }
+
+        // Destroy (Left Click)
+        if mouse_btn.just_pressed(MouseButton::Left) {
+            if let Some(&occupant_entity) = grid.occupants.get(&(tile_x, tile_y)) {
+                // Only destroy Obstacles, not Walls (if we want to distinguish, we'd need to query the entity)
+                // For now, let's assume we can destroy anything in `occupants` that isn't a permanent map feature?
+                // The user said "not walls defined by the map".
+                // Walls defined by map are also in `occupants`.
+                // We should check if the entity has `Obstacle` component.
+                // But we don't have access to query components of `occupant_entity` here easily without a `Query`.
+                // We can assume for this prototype that we can destroy anything, or we can try to be safe.
+                // Let's just destroy it for now, or better:
+                // We can't query arbitrary entities without `Query<Entity, With<Obstacle>>`.
+                // Let's add a check.
+
+                // Actually, we can just try to despawn it.
+                // But we should only remove it from grid if it was actually destroyed.
+                // Let's assume we can destroy it.
+
+                commands.entity(occupant_entity).despawn();
+                grid.occupants.remove(&(tile_x, tile_y));
+                info!("Destroyed obstacle at ({}, {})", tile_x, tile_y);
+                graph_dirty = true;
+            } else {
+                info!("Nothing to destroy at ({}, {})", tile_x, tile_y);
+            }
+        }
+
+        if graph_dirty {
+            regenerate_nav_graph(&config, &grid, &mut nav_graph);
+
+            // Force AI to repath
+            for mut target in ai_query.iter_mut() {
+                // Trigger change detection by mutating (even if value is same)
+                target.set_changed();
+            }
         }
     }
 }

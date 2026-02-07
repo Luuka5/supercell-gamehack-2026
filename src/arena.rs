@@ -135,11 +135,16 @@ fn spawn_arena(
     }
 }
 
-fn generate_nav_nodes(
+pub fn generate_nav_nodes(
     config: Res<ArenaConfig>,
     grid: Res<ArenaGrid>,
     mut nav_graph: ResMut<NavGraph>,
 ) {
+    regenerate_nav_graph(&config, &grid, &mut nav_graph);
+}
+
+pub fn regenerate_nav_graph(config: &ArenaConfig, grid: &ArenaGrid, nav_graph: &mut NavGraph) {
+    nav_graph.nodes.clear();
     let directions = [(0, 1), (0, -1), (1, 0), (-1, 0)];
 
     for ((x, y), _) in &grid.tiles {
