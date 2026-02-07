@@ -1,8 +1,8 @@
-use crate::arena::areas::{AreaID, AreaMap};
+use crate::arena::areas::AreaMap;
 use crate::arena::{ArenaConfig, ArenaGrid, Obstacle};
 use crate::building::{Structure, StructureType};
 use crate::combat::{Hp, Turret, TurretDirection};
-use crate::pathfinding::{find_path, NavGraph};
+use crate::pathfinding::{NavGraph, find_path};
 use crate::player::{Inventory, MovementController, PlayerStatus};
 use bevy::prelude::*;
 

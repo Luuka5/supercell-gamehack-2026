@@ -13,6 +13,7 @@ pub struct ArenaDescription {
     pub player_spawn: Vec3,
     pub ai_spawn: Vec3,
     pub enemy_spawn: Vec3,
+    pub resource_respawn_time: f32,
 }
 
 pub struct ArenaPlugin {
@@ -35,6 +36,17 @@ pub struct SpawnPoints {
     pub enemy: Vec3,
 }
 
+#[derive(Resource)]
+pub struct ResourceConfig {
+    pub respawn_time: f32,
+}
+
+#[derive(Component)]
+pub struct ResourceSpawner {
+    pub ty: CollectibleType,
+    pub timer: f32,
+}
+
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
         let lines: Vec<&str> = self.description.layout.trim().lines().collect();
@@ -53,13 +65,59 @@ impl Plugin for ArenaPlugin {
             ai: self.description.ai_spawn,
             enemy: self.description.enemy_spawn,
         })
+        .insert_resource(ResourceConfig {
+            respawn_time: self.description.resource_respawn_time,
+        })
         .init_resource::<ArenaGrid>()
         .init_resource::<NavGraph>()
         .add_systems(Startup, spawn_arena)
         .add_systems(
             PostStartup,
             (generate_nav_nodes, calculate_area_connectivity),
-        );
+        )
+        .add_systems(Update, resource_respawn_system);
+    }
+}
+
+fn resource_respawn_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut spawner_query: Query<(&mut ResourceSpawner, &Transform)>,
+    grid: Res<ArenaGrid>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    config: Res<ArenaConfig>,
+) {
+    for (mut spawner, transform) in spawner_query.iter_mut() {
+        if spawner.timer > 0.0 {
+            spawner.timer -= time.delta_secs();
+            if spawner.timer <= 0.0 {
+                // Respawn resource
+                let x = ((transform.translation.x - config.tile_size * 0.5) / config.tile_size)
+                    .floor() as u32;
+                let y = ((transform.translation.z - config.tile_size * 0.5) / config.tile_size)
+                    .floor() as u32;
+
+                // Only spawn if tile is not occupied by a structure (collectibles don't block, but we don't want them inside walls)
+                // Actually, collectibles are entities, but they are not in grid.occupants usually?
+                // Let's check if there is already a collectible there?
+                // For simplicity, just spawn it. The collection logic handles despawning.
+
+                let collectible_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
+                let collectible_mat = if matches!(spawner.ty, CollectibleType::Turret) {
+                    materials.add(Color::srgb(0.0, 0.0, 1.0))
+                } else {
+                    materials.add(Color::srgb(1.0, 1.0, 0.0))
+                };
+
+                commands.spawn((
+                    Collectible { ty: spawner.ty },
+                    Mesh3d(collectible_mesh),
+                    MeshMaterial3d(collectible_mat),
+                    Transform::from_translation(transform.translation + Vec3::Y * 0.5),
+                ));
+            }
+        }
     }
 }
 
@@ -241,33 +299,24 @@ fn spawn_arena(
                         .id();
                     grid.occupants.insert((x, y), obstacle_entity);
                 }
-                _ => {
-                    let mut rng = rand::rng();
-                    if rng.random_range(0.0..1.0) < 0.05 {
-                        let collectible_type = if rng.random_bool(0.5) {
-                            CollectibleType::Obstacle
-                        } else {
-                            CollectibleType::Turret
-                        };
+                'T' | 'B' => {
+                    // T = Turret Resource, B = Block (Obstacle) Resource
+                    let collectible_type = if char == 'T' {
+                        CollectibleType::Turret
+                    } else {
+                        CollectibleType::Obstacle
+                    };
 
-                        let collectible_mesh = meshes.add(Cuboid::new(0.5, 0.5, 0.5));
-                        let collectible_mat = if matches!(collectible_type, CollectibleType::Turret)
-                        {
-                            materials.add(Color::srgb(0.0, 0.0, 1.0))
-                        } else {
-                            materials.add(Color::srgb(1.0, 1.0, 0.0))
-                        };
-
-                        commands.spawn((
-                            Collectible {
-                                ty: collectible_type,
-                            },
-                            Mesh3d(collectible_mesh),
-                            MeshMaterial3d(collectible_mat),
-                            Transform::from_translation(position + Vec3::Y * 0.5),
-                        ));
-                    }
+                    // Spawn Spawner
+                    commands.spawn((
+                        ResourceSpawner {
+                            ty: collectible_type,
+                            timer: 0.0, // Spawn immediately
+                        },
+                        Transform::from_translation(position),
+                    ));
                 }
+                _ => {}
             }
         }
     }

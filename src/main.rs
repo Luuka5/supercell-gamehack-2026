@@ -35,10 +35,12 @@ const PLAYER_SIZE: Vec3 = Vec3::new(1.0, 3.0, 1.0);
 // . = Floor
 // X = Wall
 // O = Obstacle
+// T = Turret Resource
+// B = Block (Obstacle) Resource
 const ARENA_LAYOUT: &str = "
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 X........X.............................X
-X........X.............................X
+X...T....X.............................X
 X........X.............................X
 X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
 X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
@@ -60,7 +62,7 @@ X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
 X...XXXXXX.......XXXXXXXXXXXXXX....XXXXX
 X......................................X
 X.............................X........X
-X.............................X........X
+X.............................X....T...X
 X.............................X........X
 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ";
@@ -77,6 +79,7 @@ fn main() {
         player_spawn: Vec3::new(18.0, PLAYER_SIZE.y / 2.0, 10.0),
         ai_spawn: Vec3::new(26.0, PLAYER_SIZE.y / 2.0, 10.0),
         enemy_spawn: Vec3::new(142.0, PLAYER_SIZE.y / 2.0, 10.0),
+        resource_respawn_time: 30.0,
     };
 
     App::new()

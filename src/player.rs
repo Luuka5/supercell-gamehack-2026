@@ -1,5 +1,5 @@
 use crate::arena::areas::{AreaID, AreaMap};
-use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
+use crate::arena::{ArenaConfig, ArenaGrid, Collectible, ResourceConfig, ResourceSpawner};
 use crate::building::Structure;
 use crate::logging::{GameEvent, MatchLog};
 use crate::pathfinding::{find_path, has_line_of_sight, NavGraph};
@@ -143,9 +143,11 @@ fn update_inventory(
     player_query: Query<(Entity, &Transform), (With<Player>, Without<Collectible>)>,
     mut inventory_query: Query<&mut Inventory, With<Player>>,
     collectible_query: Query<(Entity, &Transform, &Collectible), Without<Player>>,
+    mut spawner_query: Query<(&mut ResourceSpawner, &Transform)>,
     mut match_log: ResMut<MatchLog>,
     time: Res<Time>,
     config: Res<ArenaConfig>,
+    resource_config: Res<ResourceConfig>,
 ) {
     let players: Vec<(Entity, Vec3)> = player_query
         .iter()
@@ -169,6 +171,21 @@ fn update_inventory(
                     .floor() as u32;
                 let tile_y = ((collectible_pos.z - config.tile_size * 0.5) / config.tile_size)
                     .floor() as u32;
+
+                // Reset spawner timer
+                for (mut spawner, spawner_transform) in spawner_query.iter_mut() {
+                    let spawner_x = ((spawner_transform.translation.x - config.tile_size * 0.5)
+                        / config.tile_size)
+                        .floor() as u32;
+                    let spawner_y = ((spawner_transform.translation.z - config.tile_size * 0.5)
+                        / config.tile_size)
+                        .floor() as u32;
+
+                    if spawner_x == tile_x && spawner_y == tile_y {
+                        spawner.timer = resource_config.respawn_time;
+                        break;
+                    }
+                }
 
                 match_log.add(GameEvent::ItemCollected {
                     entity: *player_entity,
