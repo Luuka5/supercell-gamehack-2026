@@ -1,7 +1,8 @@
 use crate::arena::{ArenaConfig, ArenaGrid, Collectible};
-use crate::player::{
-    Inventory, MovementController, SelectedBuildType, Structure, StructureType, TurretDirection,
-};
+use crate::building::{Structure, StructureType};
+use crate::combat::{Hp, TurretDirection};
+use crate::player::{Inventory, MovementController};
+use crate::GameState;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -11,6 +12,9 @@ const CAMERA_HEIGHT_OFFSET: f32 = 1.;
 const CAMERA_ROTATING_HEIGHT_OFFSET: f32 = 0.5;
 const CAMERA_MIN_DISTANCE: f32 = 1.5;
 const CAMERA_DISTANCE_MARGIN: f32 = 0.1;
+
+#[derive(Component)]
+pub struct SelectedBuildType(pub StructureType);
 
 #[derive(Component)]
 pub struct User;
@@ -48,16 +52,39 @@ impl Plugin for UserPlugin {
         app.add_systems(
             Update,
             (
-                handle_user_input,
+                handle_user_input.run_if(in_state(GameState::Playing)),
                 camera_follow,
-                handle_build_type_selection,
+                handle_build_type_selection.run_if(in_state(GameState::Playing)),
                 update_hud_counts,
                 update_hud_highlight,
                 update_hp_bar,
             ),
         )
-        .add_systems(Startup, setup_hud);
+        .add_systems(Startup, setup_hud)
+        .add_systems(OnEnter(GameState::GameOver), setup_game_over_ui);
     }
+}
+
+fn setup_game_over_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("GAME OVER"),
+                TextFont::from_font_size(60.0),
+                TextColor(Color::srgb(1.0, 0.0, 0.0)),
+            ));
+        });
 }
 
 fn handle_user_input(
@@ -501,7 +528,7 @@ fn ray_aabb_intersection(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) ->
 
 fn update_hp_bar(
     mut hp_bar_query: Query<&mut Node, With<HpBarFill>>,
-    player_query: Query<&crate::player::Hp, With<User>>,
+    player_query: Query<&Hp, With<User>>,
 ) {
     if let Ok(hp) = player_query.single() {
         for mut node in hp_bar_query.iter_mut() {

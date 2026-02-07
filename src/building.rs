@@ -1,12 +1,25 @@
 use crate::ai::{AiPlayer, TargetDestination};
 use crate::arena::{regenerate_nav_graph, ArenaConfig, ArenaGrid, Obstacle};
+use crate::combat::{Turret, TurretDirection};
 use crate::pathfinding::NavGraph;
-use crate::player::{
-    Inventory, SelectedBuildType, Structure, StructureType, Turret, TurretDirection,
-};
-use crate::user::{MainCamera, User};
+use crate::player::Inventory;
+use crate::user::{MainCamera, SelectedBuildType, User};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
+
+#[derive(Component)]
+pub struct Structure {
+    pub ty: StructureType,
+    pub collider_scale: f32,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
+pub enum StructureType {
+    #[default]
+    Obstacle,
+    Wall,
+    Turret,
+}
 
 pub struct BuildingPlugin;
 
@@ -41,11 +54,12 @@ fn update_build_preview(
     mut materials: ResMut<Assets<StandardMaterial>>,
     selected_query: Query<&SelectedBuildType, With<User>>,
 ) {
-    let (camera, camera_transform) = if let Some(c) = camera_query.iter().next() {
-        c
-    } else {
-        return;
-    };
+    let (camera, camera_transform): (&Camera, &GlobalTransform) =
+        if let Some(c) = camera_query.iter().next() {
+            c
+        } else {
+            return;
+        };
 
     let window = if let Some(w) = window_query.iter().next() {
         w
@@ -273,7 +287,9 @@ fn handle_build_input(
                     let barrel_mat = materials.add(Color::srgb(0.2, 0.2, 0.8));
 
                     let rotation = actual_direction.to_quat();
-                    let barrel_offset = rotation * Vec3::Z * 2.5;
+                    // Barrel offset should be in local space (always forward relative to turret)
+                    // Since North is -Z, forward is -Z.
+                    let barrel_offset = -Vec3::Z * 2.5;
 
                     let turret_entity = commands
                         .spawn((

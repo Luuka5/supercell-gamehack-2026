@@ -1,5 +1,5 @@
+use crate::building::{Structure, StructureType};
 use crate::pathfinding::NavGraph;
-use crate::player::{Structure, StructureType};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use rand::prelude::*;

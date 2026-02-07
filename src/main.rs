@@ -1,22 +1,30 @@
 mod ai;
 mod arena;
 mod building;
+mod combat;
 mod pathfinding;
 mod player;
 mod user;
 
-use ai::{AiPlayer, AiPlugin, Enemy, PathFollower, TargetDestination};
+use ai::{AiPlayer, AiPlugin, PathFollower, TargetDestination};
 use arena::{ArenaConfig, ArenaPlugin};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 use building::BuildingPlugin;
-use player::{
-    Hp, Inventory, MovementController, Player, PlayerPlugin, PlayerStatus, SelectedBuildType,
-    Structure, StructureType, Turret, TurretDirection,
-};
-use user::{MainCamera, User, UserPlugin};
+use building::StructureType;
+use combat::{CombatPlugin, Enemy, Hp};
+use player::{Inventory, MovementController, Player, PlayerPlugin, PlayerStatus};
+use user::{MainCamera, SelectedBuildType, User, UserPlugin};
+
+#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    Playing,
+    GameOver,
+}
 
 // --- Game Constants ---
+
 // Note: These are also defined in player.rs for now.
 // Ideally, we should move them to a shared config resource.
 const PLAYER_SIZE: Vec3 = Vec3::new(1.0, 3.0, 1.0);
@@ -57,11 +65,13 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_state::<GameState>()
         .add_plugins(ArenaPlugin::new(ARENA_LAYOUT))
         .add_plugins(PlayerPlugin)
         .add_plugins(UserPlugin)
         .add_plugins(AiPlugin)
         .add_plugins(BuildingPlugin)
+        .add_plugins(CombatPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, (grab_cursor, debug_log_positions, draw_tile_grid))
         .run();

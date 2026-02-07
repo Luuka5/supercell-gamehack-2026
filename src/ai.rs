@@ -15,9 +15,6 @@ impl Plugin for AiPlugin {
 pub struct AiPlayer;
 
 #[derive(Component)]
-pub struct Enemy;
-
-#[derive(Component)]
 pub struct TargetDestination {
     pub x: u32,
     pub y: u32,
