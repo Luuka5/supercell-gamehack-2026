@@ -1,7 +1,8 @@
 use crate::arena::areas::{AreaID, AreaMap};
-use crate::arena::ArenaConfig;
-use crate::combat::Hp;
-use crate::pathfinding::{find_path, NavGraph};
+use crate::arena::{ArenaConfig, ArenaGrid, Obstacle};
+use crate::building::{Structure, StructureType};
+use crate::combat::{Hp, Turret, TurretDirection};
+use crate::pathfinding::{NavGraph, find_path};
 use crate::player::{Inventory, MovementController, PlayerStatus};
 use bevy::prelude::*;
 
@@ -79,7 +80,7 @@ fn rule_evaluation_system(
             &AiRuleSet,
             &PlayerStatus,
             &Hp,
-            &Inventory,
+            &mut Inventory,
             &Transform,
             &mut TargetDestination,
         ),
@@ -87,14 +88,18 @@ fn rule_evaluation_system(
     >,
     area_map: Res<AreaMap>,
     config: Res<ArenaConfig>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut grid: ResMut<ArenaGrid>,
+    mut nav_graph: ResMut<NavGraph>,
 ) {
-    for (entity, rule_set, status, hp, inventory, transform, mut target) in query.iter_mut() {
+    for (entity, rule_set, status, hp, mut inventory, transform, mut target) in query.iter_mut() {
         // Sort rules by priority (descending)
         let mut sorted_rules = rule_set.0.rules.clone();
         sorted_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
 
         for rule in sorted_rules {
-            if evaluate_condition(&rule.condition, status, hp, inventory) {
+            if evaluate_condition(&rule.condition, status, hp, &inventory) {
                 // info!("AI {:?} executing rule: {}", entity, rule.name);
                 match &rule.action {
                     Action::MoveToArea(area_id) => {
@@ -155,7 +160,132 @@ fn rule_evaluation_system(
                         structure,
                         direction,
                     } => {
-                        // TODO: Implement build action
+                        let tile_x = ((transform.translation.x - config.tile_size * 0.5)
+                            / config.tile_size)
+                            .floor() as u32;
+                        let tile_y = ((transform.translation.z - config.tile_size * 0.5)
+                            / config.tile_size)
+                            .floor() as u32;
+
+                        // Check if tile is occupied
+                        if !grid.occupants.contains_key(&(tile_x, tile_y)) {
+                            let position = Vec3::new(
+                                tile_x as f32 * config.tile_size + config.tile_size * 0.5,
+                                0.0,
+                                tile_y as f32 * config.tile_size + config.tile_size * 0.5,
+                            );
+
+                            match structure {
+                                StructureType::Obstacle => {
+                                    if inventory.obstacles > 0 {
+                                        inventory.obstacles -= 1;
+                                        let obstacle_entity = commands
+                                            .spawn((
+                                                Obstacle,
+                                                Structure {
+                                                    ty: StructureType::Obstacle,
+                                                    collider_scale: 1.0,
+                                                },
+                                                Mesh3d(meshes.add(Cuboid::new(
+                                                    config.tile_size * 0.8,
+                                                    8.0 * 0.8,
+                                                    config.tile_size * 0.8,
+                                                ))),
+                                                MeshMaterial3d(
+                                                    materials.add(Color::srgb(0.6, 0.3, 0.3)),
+                                                ),
+                                                Transform::from_translation(
+                                                    position + Vec3::Y * (8.0 * 0.4),
+                                                ),
+                                            ))
+                                            .id();
+                                        grid.occupants.insert((tile_x, tile_y), obstacle_entity);
+                                        crate::arena::regenerate_nav_graph(
+                                            &config,
+                                            &grid,
+                                            &mut nav_graph,
+                                        );
+                                        info!("AI Built Obstacle at ({}, {})", tile_x, tile_y);
+                                    }
+                                }
+                                StructureType::Turret => {
+                                    if inventory.turrets > 0 {
+                                        inventory.turrets -= 1;
+
+                                        let turret_dir = if let Some(dir) = direction {
+                                            *dir
+                                        } else {
+                                            // Face enemy if possible, else random or South
+                                            if let Some(enemy_pos) = status.nearest_enemy_position {
+                                                let to_enemy = enemy_pos - transform.translation;
+                                                // Determine cardinal direction
+                                                if to_enemy.x.abs() > to_enemy.z.abs() {
+                                                    if to_enemy.x > 0.0 {
+                                                        TurretDirection::East
+                                                    } else {
+                                                        TurretDirection::West
+                                                    }
+                                                } else {
+                                                    if to_enemy.z > 0.0 {
+                                                        TurretDirection::South
+                                                    } else {
+                                                        TurretDirection::North
+                                                    }
+                                                }
+                                            } else {
+                                                TurretDirection::South
+                                            }
+                                        };
+
+                                        let rotation = turret_dir.to_quat();
+                                        let barrel_offset = -Vec3::Z * 2.5;
+
+                                        let turret_entity = commands
+                                            .spawn((
+                                                Turret {
+                                                    owner: entity,
+                                                    direction: turret_dir,
+                                                    last_shot: 0.0,
+                                                },
+                                                Structure {
+                                                    ty: StructureType::Turret,
+                                                    collider_scale: 0.5,
+                                                },
+                                                Mesh3d(meshes.add(Cuboid::new(1.0, 2.0, 1.0))),
+                                                MeshMaterial3d(
+                                                    materials.add(Color::srgb(0.2, 0.2, 0.2)),
+                                                ),
+                                                Transform::from_translation(
+                                                    position + Vec3::Y * 1.0,
+                                                )
+                                                .with_rotation(rotation),
+                                            ))
+                                            .with_children(|parent| {
+                                                parent.spawn((
+                                                    Mesh3d(meshes.add(Cuboid::new(0.4, 0.4, 3.0))),
+                                                    MeshMaterial3d(
+                                                        materials.add(Color::srgb(0.1, 0.1, 0.1)),
+                                                    ),
+                                                    Transform::from_translation(barrel_offset),
+                                                ));
+                                            })
+                                            .id();
+
+                                        grid.occupants.insert((tile_x, tile_y), turret_entity);
+                                        crate::arena::regenerate_nav_graph(
+                                            &config,
+                                            &grid,
+                                            &mut nav_graph,
+                                        );
+                                        info!(
+                                            "AI Built Turret at ({}, {}) facing {:?}",
+                                            tile_x, tile_y, turret_dir
+                                        );
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     Action::Idle => {
                         // Do nothing

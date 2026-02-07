@@ -48,26 +48,65 @@ impl Default for RuleSet {
     fn default() -> Self {
         Self {
             rules: vec![
-                // Rule 1: Flee if health is low
+                // Rule 1: Retreat to Safety (Highest Priority)
                 Rule {
-                    name: "FleeLowHealth".to_string(),
+                    name: "RetreatToSafety".to_string(),
                     priority: 100,
                     condition: Condition::IsHealthLow { threshold: 1 },
-                    action: Action::Flee,
+                    action: Action::MoveToArea(AreaID::EnemyBase),
                 },
-                // Rule 2: Chase enemy if visible
+                // Rule 2: Deploy Combat Turret (High Priority)
                 Rule {
-                    name: "ChaseEnemy".to_string(),
-                    priority: 50,
+                    name: "DeployCombatTurret".to_string(),
+                    priority: 90,
+                    condition: Condition::And(vec![
+                        Condition::IsEnemyVisible,
+                        Condition::HasItem {
+                            item: "turret".to_string(),
+                            count: 1,
+                        },
+                    ]),
+                    action: Action::Build {
+                        structure: StructureType::Turret,
+                        direction: None,
+                    },
+                },
+                // Rule 3: Engage Enemy (Medium-High Priority)
+                Rule {
+                    name: "EngageEnemy".to_string(),
+                    priority: 80,
                     condition: Condition::IsEnemyVisible,
                     action: Action::ChaseEnemy,
                 },
-                // Rule 3: Go to Center (Default)
+                // Rule 4: Fortify Center (Medium Priority)
                 Rule {
-                    name: "PatrolCenter".to_string(),
-                    priority: 10,
-                    condition: Condition::True,
+                    name: "FortifyCenter".to_string(),
+                    priority: 50,
+                    condition: Condition::And(vec![
+                        Condition::InArea(AreaID::CenterArena),
+                        Condition::HasItem {
+                            item: "obstacle".to_string(),
+                            count: 1,
+                        },
+                    ]),
+                    action: Action::Build {
+                        structure: StructureType::Obstacle,
+                        direction: None,
+                    },
+                },
+                // Rule 5: Claim Center (Low Priority)
+                Rule {
+                    name: "ClaimCenter".to_string(),
+                    priority: 20,
+                    condition: Condition::Not(Box::new(Condition::InArea(AreaID::CenterArena))),
                     action: Action::MoveToArea(AreaID::CenterArena),
+                },
+                // Rule 6: Invade Player Base (Lowest Priority)
+                Rule {
+                    name: "InvadePlayerBase".to_string(),
+                    priority: 10,
+                    condition: Condition::InArea(AreaID::CenterArena),
+                    action: Action::MoveToArea(AreaID::UserBase),
                 },
             ],
         }
